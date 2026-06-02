@@ -65,11 +65,12 @@ turns so they finish in 2-15 min on a 7B model.
 
 | Principle | Decision |
 |---|---|
-| **Simple** | Single Python entry point, no Docker, no orchestrator. Stdlib + `pyyaml` only. |
+| **Simple** | Single Python entry point, no Docker, no orchestrator. Runtime deps: `pyyaml`, `pyte` (for cast capture). Build deps: `agg` binary for GIF render. |
 | **Reproducible** | Tasks ship a deterministic input fixture (committed to repo). Same input → same expected output. Network-disabled by default. |
 | **Hermes-shaped** | Tasks are run via the real `AIAgent`, spawned as a subprocess, with `TERMINAL_ENV=tmux_isolated` so the model sees real tool schemas, real error envelopes, real conversation flow. No in-process wrapping. |
 | **Isolated** | Each task gets a fresh `tmux` session, a fresh worktree, and an isolated `$HOME`. Network is `unshare --net` by default. Cleanup is signal-safe. |
 | **Trace-capturing** | Every run writes `traces/<model>_<task>_<timestamp>.jsonl` with one line per message in the exact format the harness produces. |
+| **X-shareable** | Every task also produces a `.cast` file (asciinema v2 format) of the model's terminal session, captured via `tmux pipe-pane` from the moment the task starts to cleanup. Render to GIF/MP4 with one command. |
 | **SFT-ready** | Each trace is a complete conversation (`system → user → assistant(tool_calls) → tool → ... → assistant(content)`). We can slice it into `(prompt, completion)` pairs directly. |
 | **Scored** | Each task has a deterministic verifier. No LLM-as-judge in v0.1. |
 | **Fast feedback** | Per-task wall-clock + token count printed. Per-model summary table. |
@@ -130,11 +131,12 @@ hermesbenchv0_1/
 ├── hermesbench/
 │   ├── __init__.py
 │   ├── __main__.py             # `python -m hermesbench ...`
-│   ├── cli.py                  # CLI: run / score / export / list
+│   ├── cli.py                  # CLI: run / score / export / list / render
 │   ├── runner.py               # task lifecycle: setup → spawn hermes → trace → teardown
 │   ├── backend/
 │   │   ├── __init__.py
 │   │   ├── tmux_isolated.py    # BaseEnvironment subclass (see §3.1)
+│   │   ├── recorder.py         # pyte-based pipe-pane sink → .cast (§3.1a)
 │   │   └── worktree.py         # per-task worktree / tmp / home setup
 │   ├── hermes_invocation.py    # spawns `python -m hermes_agent --quiet` per task
 │   ├── scoring.py              # deterministic verifiers + metric aggregation
@@ -160,7 +162,9 @@ hermesbenchv0_1/
 ├── hermes_agent_patch/         # minimal upstream patch needed in hermes-agent
 │   ├── TERMINAL_ENV_tmux.md    # docs: how to register the new backend
 │   └── _create_environment.py  # diff: add 'tmux_isolated' to factory
-├── traces/                     # gitignored: per-run output
+├── examples/                   # 3 reference GIFs (easy/medium/hard) + raw casts
+│   └── .gitkeep
+├── traces/                     # gitignored: per-run output (jsonl + cast)
 │   └── .gitkeep
 ├── results/                    # gitignored: aggregated scores
 │   └── .gitkeep
@@ -219,6 +223,124 @@ Key properties:
   opt out.
 - **Snapshot file lives inside the worktree** (`$worktree/.hermes-snap.sh`),
   not `/tmp`, so the session is fully self-contained.
+
+### 3.1a Terminal capture for X sharing (always-on)
+
+Every task records its full terminal session as an asciinema v2 `.cast`
+file. This is the artifact you post to X — no extra work, no model
+behavior change. Wire-up is purely at the `tmux` layer via
+`pipe-pane`, so the model has zero idea it's being recorded.
+
+**Capture mechanism — `tmux pipe-pane` to a python `pyte` screen
+emulator.** Two-step:
+
+1. **Attach a pipe** in `init_session()`:
+   ```bash
+   tmux pipe-pane -t $SESSION -o "python3 $HERMESBENCH/recorder.py $CAST_FILE"
+   ```
+2. **The recorder** is a 80-LOC Python script that uses `pyte` (a
+   pure-Python VT100/xterm emulator) to maintain a screen buffer, then
+   flushes diffs to the `.cast` file in asciinema v2 format on a
+   100ms tick.
+
+Why this design:
+- **`pyte` is screen-accurate** — it understands ANSI escape codes, cursor
+  movement, color, alternate screen buffer, `\r` progress bars, etc.
+  Critical because models use progress bars (`pip install`, `cargo
+  build`, `pytest -v`) all the time and we don't want the cast to
+  look like garbled text.
+- **Diff-based flush** is the asciinema v2 idiom — we don't dump the full
+  screen every frame, we emit only what changed, so file sizes stay
+  small (typical 5-minute cast ≈ 50-200 KB).
+- **Always-on, zero opt-in** — every `TmuxIsolatedEnvironment.init_session()`
+  pipes unconditionally. The `.cast` file is one of the canonical
+  artifacts alongside the trace jsonl.
+
+**Layout addition:**
+
+```
+hermesbench/
+├── backend/
+│   ├── tmux_isolated.py        # BaseEnvironment subclass
+│   └── recorder.py             # pyte-based pipe-pane sink → .cast
+```
+
+**CLI to render `.cast` to shareable formats:**
+
+```bash
+# GIF (default for X, Twitter caps at 15MB; we target <8MB)
+python -m hermesbench render trace.cast --format gif --out trace.gif
+
+# MP4 (better quality, can host anywhere)
+python -m hermesbench render trace.cast --format mp4 --out trace.mp4
+
+# Trim (drop the first/last N seconds; for skipping warmup)
+python -m hermesbench render trace.cast --format gif --trim-start 5s --trim-end 2s
+
+# Speed up boring parts (e.g. apt-get install) — model finished, viewer doesn't need 30s
+python -m hermesbench render trace.cast --format gif --speed 2.0
+
+# Concat multiple tasks into one reel
+python -m hermesbench render-reel traces/qwen*.cast --format gif --out reel.gif
+```
+
+**Render backend stack (no install surprises):**
+
+| Format | Tool | Why |
+|---|---|---|
+| `.cast` | `pyte` + our recorder | Source of truth, replayable with `asciinema play` |
+| `.gif` | `agg` (asciinema gif generator) | High-quality, palette-aware, the de-facto choice for X |
+| `.mp4` | `ffmpeg` (already on system) | Universal, 1080p+ |
+| `.txt` | raw terminal log (cat) | For README embedding |
+| `.svg` | `termsvg` if installed | Static screenshots |
+
+`agg` is a single Rust binary (~3 MB), pull it as a build dep or pin
+version. `ffmpeg` is already installed. The `render` CLI checks
+availability and degrades gracefully — if `agg` missing, fall back to
+`ffmpeg` + a quick `chafa` frame rasterization (no install needed
+beyond ffmpeg).
+
+**What gets captured (and what doesn't):**
+
+- ✅ All `terminal` tool output — this is the whole point
+- ✅ All error messages, stack traces, prompts the model sees
+- ✅ Model's own thinking? **No.** We capture the *terminal*, not the
+  LLM's hidden chain-of-thought. Reasoning_content stays in the jsonl
+  trace, not in the cast.
+- ✅ TUI elements, progress bars, pagers (`less`, `vim`, `htop`) — `pyte`
+  handles alternate screen buffer correctly
+- ❌ TUI prompts (the hermes REPL's spinner, etc.) — they don't exist
+  in `--no-tui --print-mode jsonl` mode anyway
+
+**X-specific quality notes:**
+
+- X video caps at 140s / 500MB. Most task casts are 30-120s. If a task
+  runs longer, `render` auto-suggests `--speed 2.0` to halve length.
+- X autoplay is muted — visual hooks matter. The `render` CLI has a
+  `--add-caption` flag that overlays the task name + pass/fail at the
+  start, e.g.:
+  `t03_patch_edit / t02_patch_ambiguous — ✅ PASS — qwen2.5-coder-7b`
+- Watermark? Optional `--watermark "hermesbench v0.1"` in the corner
+  (per the user's YC-quality + branding bar; matches the watermark
+  convention from the ascii-video skill — visible from frame 0, no
+  fade-in, so loops are seamless).
+
+**Sanity test (added to CI):**
+
+```python
+def test_recorder_roundtrip():
+    """A 5-line bash session should produce a valid .cast that re-renders."""
+    with tempfile.TemporaryDirectory() as d:
+        cast = Path(d) / "x.cast"
+        run_in_tmux("echo hello; sleep 0.2; ls; echo done", cast_path=cast)
+        # Round-trip: read the cast, verify it's valid asciinema v2
+        frames = list(read_cast(cast))
+        assert len(frames) >= 4
+        assert "hello" in screen_text(frames[-1])
+        # And it renders without error
+        gif = render(cast, format="gif")
+        assert gif.stat().st_size > 1000
+```
 
 ### 3.2 The hermes-agent invocation
 
@@ -486,6 +608,18 @@ python -m hermesbench export-sft \
     --in traces/ \
     --out sft_dataset.jsonl \
     --format openai
+
+# Render a .cast to GIF/MP4 for X
+python -m hermesbench render traces/qwen_t03_*.cast --format gif --out tweet.gif
+python -m hermesbench render traces/qwen_t03_*.cast --format mp4 \
+    --add-caption "qwen2.5-coder-7b — t03_patch_ambiguous — ✅ PASS" \
+    --watermark "hermesbench v0.1"
+
+# Concat multiple task casts into one reel (great for "5 tasks, 1 tweet")
+python -m hermesbench render-reel traces/qwen_*.cast --format gif --out reel.gif
+
+# Browse a recording locally before posting
+python -m hermesbench play traces/qwen_t03_*.cast
 ```
 
 ---
@@ -493,12 +627,17 @@ python -m hermesbench export-sft \
 ## 7. Implementation phases
 
 ### Phase 1 — Skeleton + `TmuxIsolatedEnvironment` backend (Day 1-3)
-- [ ] `pyproject.toml` + `hermesbench/` package skeleton
+- [ ] `pyproject.toml` + `hermesbench/` package skeleton (deps: `pyyaml`, `pyte`)
 - [ ] `backend/tmux_isolated.py` — first cut: `init_session`, `_run_bash`, `cleanup`
+- [ ] `backend/recorder.py` — `pyte`-based pipe-pane sink that writes
+      asciinema v2 `.cast` files (80 LOC + roundtrip test)
+- [ ] Wire `tmux pipe-pane` into `init_session()` so every task
+      records automatically
 - [ ] `backend/worktree.py` — `worktree_setup(task)` copies fixtures, sets up isolated `$HOME`
 - [ ] `runner.py` — task lifecycle: setup → spawn hermes → trace → teardown
 - [ ] Manual smoke test: 1 task against a real model, confirm tmux session is
-      created, model runs, tmux is killed, worktree is removed
+      created, model runs, **`.cast` is produced and re-playable**,
+      tmux is killed, worktree is removed
 - [ ] Add the `TERMINAL_ENV=tmux_isolated` branch to hermes-agent's
       `_create_environment()` factory (1-line PR to `tools/terminal_tool.py`)
 
@@ -527,6 +666,12 @@ python -m hermesbench export-sft \
 - [ ] `scoring.py` computes all 6 metrics
 - [ ] `results/<model>_<date>.json` per-run aggregate
 - [ ] Pretty-print summary table
+- [ ] `cli.py` `render` subcommand: `.cast` → `.gif` / `.mp4` via `agg` + `ffmpeg`
+- [ ] `cli.py` `render-reel` subcommand: concat multiple casts
+- [ ] `cli.py` `play` subcommand: `asciinema play` wrapper for local preview
+- [ ] `examples/` directory seeded with 3 reference GIFs (one per
+      difficulty tier: easy/medium/hard) so README screenshots stay
+      accurate when the suite evolves
 
 ### Phase 6 — Export to SFT format (Day 13)
 - [ ] `export-sft` command: traces → OpenAI / ShareGPT / Hermes message formats
@@ -576,6 +721,14 @@ python -m hermesbench export-sft \
 - [ ] Subprocess-mode runs use real `AIAgent`; verified by grepping
       trace jsonl for messages whose `role=tool` carries
       `success: bool` envelopes (a sign the real tool handlers ran)
+- [ ] Every task run produces a valid `.cast` file (verified by
+      `test_recorder_roundtrip` in CI)
+- [ ] `python -m hermesbench render trace.cast --format gif` produces
+      a <8MB GIF that captures the model's terminal faithfully
+      (manual QA: progress bars, colors, errors all readable)
+- [ ] At least 3 example X-ready GIFs are committed to
+      `examples/` so users can see what the output looks like before
+      running their first task
 
 ---
 
@@ -610,6 +763,24 @@ python -m hermesbench export-sft \
    Fallback: ship a 50-LOC `print_jsonl` plugin that hooks the message
    stream. **Decision: try CLI flag first, fall back to plugin. Both
    paths land in v0.1.**
+10. **What cast format should we own long-term?** asciinema v2 (`.cast`)
+    is the standard — tools like `agg`, `asciinema-player`, and `termsvg`
+    all consume it. **Decision: asciinema v2 is the source of truth, GIF
+    is the rendered derivative.**
+11. **Does the cast include the prompt the model sees, or only its
+    output?** The whole terminal — prompt + output + errors. The model's
+    first user turn is `echo`-ed by hermes's print-mode anyway, so
+    reviewers see "Task: fix this off-by-one" → model's response. This
+    is what makes the cast self-explanatory on X. **Decision: capture
+    the entire pane.**
+12. **Cast file size growth?** 5-min cast ≈ 50-200 KB at 100ms tick
+    with diff-based flush. 40 tasks × 5 min = ~8 MB of casts per model
+    run. Acceptable for `traces/`. **Decision: keep all casts by
+    default, add `.gitignore`-friendly `--keep-casts=false` for bulk
+    runs.**
+13. **Render server-side or via `agg` local?** `agg` is a single static
+    binary, no server needed. **Decision: local render. CI uploads
+    GIFs as PR artifacts.**
 
 ---
 
