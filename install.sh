@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Python venv + editable install: see scripts/bootstrap.sh (also invoked below).
 echo "╔══════════════════════════════════════╗"
 echo "║  HermesBench Installer          ║"
 echo "╚══════════════════════════════════════╝"
@@ -74,11 +75,9 @@ if ! command -v agg &>/dev/null; then
 fi
 
 # 5. Create venv + install
-echo "→ Creating virtual environment..."
-python3 -m venv .venv
+echo "→ Bootstrapping Python environment (scripts/bootstrap.sh)..."
+bash "$SCRIPT_DIR/scripts/bootstrap.sh"
 source .venv/bin/activate
-pip install --upgrade pip -q
-pip install -e . -q
 echo "✓ Python dependencies installed"
 
 # 6. Check for hermes-agent

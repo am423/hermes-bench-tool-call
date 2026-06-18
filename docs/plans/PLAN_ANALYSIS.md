@@ -1,3 +1,7 @@
+> **Superseded** — historical planning notes only.
+> Current agent and run instructions: [AGENTS.md](../../AGENTS.md).
+> Do not treat this document as the source of truth for v0.3+.
+
 # Rebuilt Plan: HermesBench Analysis & Upgrade (100/100)
 
 All 10 rubric gaps fixed. No HF upload.

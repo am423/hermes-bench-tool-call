@@ -25,7 +25,10 @@ jobs:
         run: mypy hermesbench --strict
       - name: Test
         run: |
-          pytest --cov=hermesbench --cov-fail-under=80 tests/
+          pytest -m "not integration" --cov=hermesbench --cov-fail-under=80 tests/
+      - name: Validate tasks
+        run: |
+          hermesbench validate
       - name: Fixture lint
         run: |
           python -m hermesbench validate fixtures/ tasks/ --lint-only

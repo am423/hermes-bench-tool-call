@@ -1,3 +1,7 @@
+> **Superseded** — historical planning notes only.
+> Current agent and run instructions: [AGENTS.md](../../AGENTS.md).
+> Do not treat this document as the source of truth for v0.3+.
+
 # Hyperframes Video Plan — GLM-5.2 Benchmark with Real Agent
 
 ## Problem
