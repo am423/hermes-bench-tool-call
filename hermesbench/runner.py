@@ -116,8 +116,8 @@ def run_task(
     stats_path = task_dir / "stats.jsonl"
     trace_path = task_dir / "trace.jsonl"
 
-    # 3. Endpoint smoke test — cached per model to avoid API rate limits
-    if not dry_run and not _smoke_test_cache.get(model):
+    # 3. Endpoint smoke test — skip for real agent (uses hermes CLI which handles auth)
+    if not dry_run and not use_real_agent and not _smoke_test_cache.get(model):
         ok, msg = smoke_test_endpoint(
             base_url, model, task.model_endpoint.__dict__
         )
@@ -210,7 +210,7 @@ def run_task(
         )
 
         # 7. Spawn hermes (Q53 line-buffered)
-        from hermesbench.hermes_invocation import spawn_hermes
+        from hermesbench.hermes_invocation import spawn_hermes, export_to_trace
 
         env_overrides = {
             "DISABLED_TOOLSETS": ",".join(
@@ -240,15 +240,42 @@ def run_task(
 
         # 8. Stream the trace — dual mode
         if use_real_agent:
-            # Real agent: wait for completion, then read stdout
+            # Real agent: wait for completion, then capture session via export
             try:
                 hermes_proc.wait(timeout=task.timeout_seconds)
             except subprocess.TimeoutExpired:
                 hermes_proc.kill()
                 hermes_proc.wait(timeout=5)
+
             stdout_text = hermes_proc.stdout.read() if hermes_proc.stdout else ""
-            with trace_path.open("w") as f:
-                f.write(stdout_text)
+            stderr_text = hermes_proc.stderr.read() if hermes_proc.stderr else ""
+
+            # Parse session_id from stderr
+            import re as _re
+            session_id = None
+            for line in stderr_text.splitlines():
+                m = _re.search(r"session_id:\s*(\S+)", line)
+                if m:
+                    session_id = m.group(1)
+                    break
+
+            if session_id:
+                # Export session and convert to per-message JSONL
+                export_tmp = Path(tempfile.mktemp(suffix=".jsonl"))
+                hermes_bin = shutil.which("hermes") or str(hermes_path / "hermes")
+                export_result = subprocess.run(
+                    [hermes_bin, "sessions", "export", "--session-id", session_id, str(export_tmp)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if export_result.returncode == 0 and export_tmp.exists():
+                    export_to_trace(export_tmp, trace_path)
+                    export_tmp.unlink(missing_ok=True)
+                else:
+                    # Fallback: write stdout as plain text
+                    trace_path.write_text(stdout_text)
+            else:
+                # Fallback: no session_id, write stdout
+                trace_path.write_text(stdout_text)
         else:
             # Fake mode: read JSONL from stdout (existing behavior)
             with trace_path.open("w") as f:

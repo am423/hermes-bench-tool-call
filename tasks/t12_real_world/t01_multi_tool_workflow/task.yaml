@@ -1,0 +1,53 @@
+id: t12_real_world/t01_multi_tool_workflow
+name: "Multi-tool workflow"
+version: 1
+difficulty: 2
+tags: [real_world, multi_tool, read_file, patch]
+
+prompt: |
+  Read the file `add.py`, identify any issues in the code, and fix them.
+
+allowed_tools:
+  - read_file
+  - patch
+  - terminal
+
+forbidden_tools: []
+
+max_turns: 10
+max_tokens: 4096
+timeout_seconds: 120
+isolated_network: true
+
+fixture:
+  source: small_repo
+  globs: ["**/*"]
+
+sampling:
+  temperature: 0.0
+  top_p: 1.0
+  top_k: -1
+  seed: 42
+
+resource_limits:
+  max_memory_mb: 2048
+  max_processes: 128
+  max_file_size_mb: 100
+  max_worktree_mb: 500
+
+hermes_plugins: []
+
+latency_injection_ms:
+  terminal: 0
+  read_file: 0
+  patch: 0
+
+model_endpoint:
+  type: openai_chat_completions
+  required_fields: [tools, tool_choice]
+  forbidden_fields: [logprobs]
+
+verifier:
+  module: verifier
+  fn: verify
+  timeout_seconds: 10

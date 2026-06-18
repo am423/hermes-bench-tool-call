@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -201,10 +202,10 @@ def spawn_hermes(
 
     if use_real_agent:
         toolsets = allowed_tools_to_toolsets(allowed_tools or ["terminal"])
-        hermes_bin = str(hermes_path / "hermes")
+        hermes_bin = shutil.which("hermes") or str(hermes_path / "hermes")
         cmd = [
             hermes_bin,
-            "-z", task_prompt,
+            "chat", "-q", task_prompt,
             "--yolo",
             "-Q",
             "-t", toolsets,
@@ -257,3 +258,40 @@ def export_session_trace(
     except Exception:
         pass
     return False
+
+
+def export_to_trace(export_path: Path, trace_path: Path) -> bool:
+    """Convert hermes session export to per-message JSONL.
+
+    Session export is one JSON blob: {"messages": [...], ...}
+    Verifiers expect per-message JSONL lines.
+
+    Also prefixes tool message content with [tool_name] so the existing
+    trace.py _normalize() can reconstruct tool names.
+    """
+    import json
+
+    data = json.loads(export_path.read_text())
+    messages = data.get("messages", [])
+
+    # Build tool_call_id to tool_name mapping
+    tc_name_map: dict[str, str] = {}
+    for msg in messages:
+        for tc in (msg.get("tool_calls") or []):
+            tc_id = tc.get("id")
+            tc_name = (tc.get("function") or {}).get("name", "tool")
+            if tc_id:
+                tc_name_map[tc_id] = tc_name
+
+    with trace_path.open("w") as f:
+        for msg in messages:
+            # Prefix tool content with [name] for normalizer compatibility
+            if msg.get("role") == "tool":
+                content = msg.get("content", "")
+                tc_id = msg.get("tool_call_id", "")
+                name = tc_name_map.get(tc_id, "tool")
+                if isinstance(content, str) and not content.startswith("["):
+                    msg["content"] = f"[{name}] {content}"
+            f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+    return True
