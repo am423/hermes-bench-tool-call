@@ -1,4 +1,5 @@
 """Run hermesbench tasks against the real Hermes Agent (run_agent.py)."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,7 +7,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import time
 import uuid
 from dataclasses import asdict
@@ -33,13 +33,19 @@ DEFAULT_MODEL = "nex-agi/nex-n2-pro:free"
 DEFAULT_TOOLSETS = "all"
 FUNCTION_CALL_OPEN = "<" + "tool_call" + ">"
 FUNCTION_CALL_CLOSE = "</" + "tool_call" + ">"
-FUNCTION_CALL_RE = re.compile(re.escape(FUNCTION_CALL_OPEN) + r"(.*?)" + re.escape(FUNCTION_CALL_CLOSE), re.S)
-FUNCTION_CALL_STRIP_RE = re.compile(re.escape(FUNCTION_CALL_OPEN) + r".*?" + re.escape(FUNCTION_CALL_CLOSE), re.S)
-REASONING_SCRATCHPAD_RE = re.compile(r'<' + 'REASONING_SCRATCHPAD' + '>(.*?)</' + 'REASONING_SCRATCHPAD' + '>', re.S)
-THINK_RE = re.compile(r'<' + 'think' + '>', re.S)
-THINK_CLOSE_RE = re.compile(r'</' + 'think' + '>', re.S)
-THINK_RE2 = re.compile(r'<' + '</think>' + '>', re.S)
-THINK_CLOSE_RE2 = re.compile(r'</' + '</think>' + '>', re.S)
+FUNCTION_CALL_RE = re.compile(
+    re.escape(FUNCTION_CALL_OPEN) + r"(.*?)" + re.escape(FUNCTION_CALL_CLOSE), re.S
+)
+FUNCTION_CALL_STRIP_RE = re.compile(
+    re.escape(FUNCTION_CALL_OPEN) + r".*?" + re.escape(FUNCTION_CALL_CLOSE), re.S
+)
+REASONING_SCRATCHPAD_RE = re.compile(
+    r"<" + "REASONING_SCRATCHPAD" + ">(.*?)</" + "REASONING_SCRATCHPAD" + ">", re.S
+)
+THINK_RE = re.compile(r"<" + "think" + ">", re.S)
+THINK_CLOSE_RE = re.compile(r"</" + "think" + ">", re.S)
+THINK_RE2 = re.compile(r"<" + "</think>" + ">", re.S)
+THINK_CLOSE_RE2 = re.compile(r"</" + "</think>" + ">", re.S)
 
 
 def _slugify(value: str) -> str:
@@ -84,7 +90,9 @@ def _extract_reasoning(value: str) -> tuple[str, list[str]]:
     return content.strip(), reasoning
 
 
-def _extract_tool_calls(value: str, tool_call_ids: list[str], offset: int) -> tuple[list[dict[str, Any]], int]:
+def _extract_tool_calls(
+    value: str, tool_call_ids: list[str], offset: int
+) -> tuple[list[dict[str, Any]], int]:
     calls: list[dict[str, Any]] = []
     next_id = offset
     for match in FUNCTION_CALL_RE.finditer(value):
@@ -141,7 +149,9 @@ def _trajectory_to_trace(traj_path: Path, trace_path: Path) -> None:
 
             if role_raw == "gpt":
                 clean_value, reasoning = _extract_reasoning(value)
-                tool_calls, tool_id_cursor = _extract_tool_calls(clean_value, tool_call_ids, tool_id_cursor)
+                tool_calls, tool_id_cursor = _extract_tool_calls(
+                    clean_value, tool_call_ids, tool_id_cursor
+                )
                 clean_value = FUNCTION_CALL_STRIP_RE.sub("", clean_value).strip()
                 clean_value = REASONING_SCRATCHPAD_RE.sub("", clean_value).strip()
                 clean_value = THINK_RE.sub("", clean_value).strip()
@@ -250,7 +260,6 @@ def _run_hermes(
         for line in proc.stdout:
             log_file.write(line)
             log_file.flush()
-            print(line, end="")
         return subprocess.CompletedProcess(cmd, proc.wait(timeout=timeout_seconds), "", "")
     except subprocess.TimeoutExpired:
         proc.kill()
@@ -261,7 +270,6 @@ def _run_hermes(
         if rest:
             log_file.write(rest)
             log_file.flush()
-            print(rest, end="")
         return subprocess.CompletedProcess(cmd, 124, "", rest)
     finally:
         log_file.close()
@@ -313,30 +321,20 @@ def run_real_benchmark(
         "tasks": [],
     }
 
-    print(f"[real-model-benchmark] run_id={rid}")
-    print(f"[real-model-benchmark] model={model}")
-    print(f"[real-model-benchmark] base_url={base_url}")
-    print(f"[real-model-benchmark] toolsets={toolsets}")
-    print(f"[real-model-benchmark] hermes_path={hermes_path}")
-    print(f"[real-model-benchmark] task_count={len(tasks)}")
-
     for task in tasks:
         task_started = time.time()
         task_dir = traces_root / task.id
         task_dir.mkdir(parents=True, exist_ok=True)
         worktree = worktree_setup.setup_worktree(task, run_id=rid, repo_root=root)
-        isolated_home = Path.home() / ".hermes" / "tmp" / f"hb-home-{rid}-{task.id.replace('/', '_')}"
+        isolated_home = (
+            Path.home() / ".hermes" / "tmp" / f"hb-home-{rid}-{task.id.replace('/', '_')}"
+        )
         isolated_home.mkdir(parents=True, exist_ok=True)
 
         raw_log_path = task_dir / "run_agent.log"
         trajectory_path = worktree / "trajectory_samples.jsonl"
         trace_path = task_dir / "trace.jsonl"
         verifier_path = task_dir / "verifier_result.json"
-
-        print(f"\n[task] {task.id} ({task.name})")
-        print(f"[task] worktree={worktree}")
-        print(f"[task] isolated_home={isolated_home}")
-        print(f"[task] max_turns={max_turns or task.max_turns}")
 
         completed = _run_hermes(
             hermes_path=hermes_path,
@@ -366,8 +364,6 @@ def run_real_benchmark(
         _write_json(verifier_path, verifier_payload)
 
         elapsed = time.time() - task_started
-        print(f"[task] exit_code={completed.returncode} elapsed={elapsed:.1f}s verifier={verifier_result.status.value}")
-        print(f"[task] verifier_reason={verifier_result.reason}")
 
         summary["tasks"].append(
             {
@@ -395,17 +391,13 @@ def run_real_benchmark(
     summary["pass_rate"] = passed / len(summary["tasks"]) if summary["tasks"] else 0.0
     _write_json(results_root / "summary.json", summary)
 
-    print("\n[summary]")
-    print(f"run_id={rid}")
-    print(f"passed={passed}/{len(summary['tasks'])}")
-    print(f"pass_rate={summary['pass_rate']:.1%}")
-    print(f"summary={results_root / 'summary.json'}")
-    print(f"traces_root={traces_root}")
     return 0 if summary["failed"] == 0 else 1
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run hermesbench tasks with the real Hermes Agent model path.")
+    parser = argparse.ArgumentParser(
+        description="Run hermesbench tasks with the real Hermes Agent model path."
+    )
     parser.add_argument("--repo-root", type=Path, default=REPO)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
@@ -413,8 +405,12 @@ def main() -> int:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--tasks", nargs="*", help="Task IDs to run. Omit to run all tasks.")
     parser.add_argument("--max-turns", type=int, default=None, help="Override per-task max turns.")
-    parser.add_argument("--timeout-overhead", type=int, default=30, help="Extra seconds added to each task timeout.")
-    parser.add_argument("--hermes-agent-path", type=Path, default=None, help="Override Hermes Agent checkout path.")
+    parser.add_argument(
+        "--timeout-overhead", type=int, default=30, help="Extra seconds added to each task timeout."
+    )
+    parser.add_argument(
+        "--hermes-agent-path", type=Path, default=None, help="Override Hermes Agent checkout path."
+    )
     parser.add_argument(
         "--use-hermes-config",
         action="store_true",

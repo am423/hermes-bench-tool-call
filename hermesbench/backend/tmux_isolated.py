@@ -16,8 +16,10 @@ The model never sees a difference from a regular hermes session —
 the harness uses the same tool schemas, same AIAgent loop, same
 conversation flow. We just changed which `bash` is being invoked.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shlex
@@ -66,10 +68,17 @@ class TmuxIsolatedEnvironment(BaseHermesBenchEnvironment):
 
         # Start tmux session
         cmd = [
-            "tmux", "new-session", "-d",
-            "-s", self.session_name,
-            "-c", str(self.worktree),
-            "-x", "200", "-y", "50",  # reasonable pane size for pyte
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            self.session_name,
+            "-c",
+            str(self.worktree),
+            "-x",
+            "200",
+            "-y",
+            "50",  # reasonable pane size for pyte
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
@@ -108,10 +117,8 @@ class TmuxIsolatedEnvironment(BaseHermesBenchEnvironment):
                 self._recorder.terminate()
                 self._recorder.wait(timeout=2)
             except Exception:
-                try:
+                with contextlib.suppress(Exception):
                     self._recorder.kill()
-                except Exception:
-                    pass
             self._recorder = None
 
         # Kill tmux session
@@ -211,7 +218,9 @@ class TmuxIsolatedEnvironment(BaseHermesBenchEnvironment):
         return result.stdout
 
     def _capture_last_line(self) -> str:
-        return self._capture_pane().rstrip().splitlines()[-1] if self._capture_pane().strip() else ""
+        return (
+            self._capture_pane().rstrip().splitlines()[-1] if self._capture_pane().strip() else ""
+        )
 
     def _build_env_script(self) -> str:
         """Build the env script sourced in the session."""
@@ -229,10 +238,19 @@ class TmuxIsolatedEnvironment(BaseHermesBenchEnvironment):
 
         # DISABLED_TOOLSETS (Q54)
         disabled = ",".join(
-            p for p in [
-                "kanban", "memory_providers", "observability", "image_gen",
-                "video_gen", "computer_use", "cronjob", "messaging",
-                "ha_*", "send_message", "delegate_task",
+            p
+            for p in [
+                "kanban",
+                "memory_providers",
+                "observability",
+                "image_gen",
+                "video_gen",
+                "computer_use",
+                "cronjob",
+                "messaging",
+                "ha_*",
+                "send_message",
+                "delegate_task",
             ]
             if p not in self.plugin_allowlist
         )
@@ -243,12 +261,13 @@ class TmuxIsolatedEnvironment(BaseHermesBenchEnvironment):
             f"export HERMESBENCH_SESSION={shlex.quote(self.session_name)}",
             f"export HERMESBENCH_HOME={shlex.quote(str(self.isolated_home))}",
             f"export HERMESBENCH_WORKTREE={shlex.quote(str(self.worktree))}",
-            f'export DISABLED_TOOLSETS={shlex.quote(",".join(p for p in disabled.split(",") if p))}',
+            f"export DISABLED_TOOLSETS={shlex.quote(','.join(p for p in disabled.split(',') if p))}",
             'export PS1="$ "',  # short prompt so pyte screen buffer is useful
-            'export TERM=xterm-256color',
+            "export TERM=xterm-256color",
             "stty -echo",
             "set +o history",  # don't pollute the session history
-        ] + ulimits
+            *ulimits,
+        ]
         return "\n".join(lines) + "\n"
 
     def _apply_ulimit(self, name: str, value: int) -> None:
@@ -276,9 +295,15 @@ class TmuxIsolatedEnvironment(BaseHermesBenchEnvironment):
         # Spawn the recorder
         recorder_script = Path(__file__).parent / "recorder.py"
         cmd = [
-            "python3", "-u", str(recorder_script),
-            "--out", str(self.record_path),
-            "--cols", "200", "--rows", "50",
+            "python3",
+            "-u",
+            str(recorder_script),
+            "--out",
+            str(self.record_path),
+            "--cols",
+            "200",
+            "--rows",
+            "50",
         ]
         # The recorder reads from stdin; we connect pipe-pane to it
         self._recorder = subprocess.Popen(
@@ -290,8 +315,12 @@ class TmuxIsolatedEnvironment(BaseHermesBenchEnvironment):
         # pipe-pane
         subprocess.run(
             [
-                "tmux", "pipe-pane", "-t", self.session_name,
-                "-o", f"python3 -u {shlex.quote(str(recorder_script))} --out {shlex.quote(str(self.record_path))} --cols 200 --rows 50",
+                "tmux",
+                "pipe-pane",
+                "-t",
+                self.session_name,
+                "-o",
+                f"python3 -u {shlex.quote(str(recorder_script))} --out {shlex.quote(str(self.record_path))} --cols 200 --rows 50",
             ],
             capture_output=True,
             check=False,

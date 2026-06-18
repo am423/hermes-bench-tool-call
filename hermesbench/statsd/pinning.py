@@ -5,12 +5,13 @@ detect the model's process tree, pick a sibling core with the
 lowest current util, and pin to it. If no quiet core is found,
 we log a warning (Q62) and fall back to non-pinned.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import subprocess
-from pathlib import Path
 
 import psutil
 
@@ -42,28 +43,21 @@ def find_quiet_core() -> int | None:
 
 def lower_priority() -> None:
     """Lower this process's priority to IDLE (Q14, Q62)."""
-    try:
+    with contextlib.suppress(OSError):
         os.nice(19)
-    except OSError:
-        pass
     # ionice: best-effort, only on Linux
-    try:
+    with contextlib.suppress(FileNotFoundError):
         subprocess.run(
             ["ionice", "-c", "3", "-p", str(os.getpid())],
             capture_output=True,
             check=False,
         )
-    except FileNotFoundError:
-        pass
 
 
 def pin_to_core(core_id: int) -> None:
     """Pin this process to a single CPU core (Linux only)."""
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         os.sched_setaffinity(0, {core_id})  # type: ignore[attr-defined]
-    except (AttributeError, OSError):
-        # macOS / non-Linux
-        pass
 
 
 def model_pids_alive(model_pids: list[int]) -> list[int]:

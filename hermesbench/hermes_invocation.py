@@ -5,6 +5,7 @@ Q22: resolution order is $HERMES_AGENT_PATH > ./hermes-agent/ >
 Q50: record the hermes git SHA in meta.json.
 Q57: smoke-test the model endpoint before kicking off the suite.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,12 +15,13 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
-FAKE_HERMES_TEST_PATH = Path(__file__).resolve().parent.parent / "tests" / "support" / "fake_hermes.py"
+FAKE_HERMES_TEST_PATH = (
+    Path(__file__).resolve().parent.parent / "tests" / "support" / "fake_hermes.py"
+)
 
 TOOLSET_MAP = {
     "terminal": "terminal",
@@ -161,7 +163,7 @@ def smoke_test_endpoint(base_url: str, model: str, expected: dict) -> tuple[bool
                 with urllib.request.urlopen(req2, timeout=10) as r2:
                     resp2 = json.loads(r2.read())
                 if "choices" not in resp2:
-                    return False, f"endpoint did not return choices for tool call"
+                    return False, "endpoint did not return choices for tool call"
                 return True, "ok"
         if "choices" not in resp:
             return False, f"endpoint response missing 'choices': keys={list(resp.keys())}"
@@ -214,16 +216,24 @@ def spawn_hermes(
         hermes_bin = shutil.which("hermes") or str(hermes_path / "hermes")
         cmd = [
             hermes_bin,
-            "chat", "-q", task_prompt,
+            "chat",
+            "-q",
+            task_prompt,
             "--yolo",
             "-Q",
-            "-t", toolsets,
-            "--max-turns", str(max_turns),
+            "-t",
+            toolsets,
+            "--max-turns",
+            str(max_turns),
         ]
         proc = subprocess.Popen(
-            cmd, cwd=str(worktree), env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=0,
+            cmd,
+            cwd=str(worktree),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=0,
         )
         return proc
 
@@ -276,7 +286,9 @@ def export_session_trace(
     try:
         result = subprocess.run(
             [str(hermes_path / "hermes"), "sessions", "export", session_id],
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             cwd=str(hermes_path),
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -304,7 +316,7 @@ def export_to_trace(export_path: Path, trace_path: Path) -> bool:
     # Build tool_call_id to tool_name mapping
     tc_name_map: dict[str, str] = {}
     for msg in messages:
-        for tc in (msg.get("tool_calls") or []):
+        for tc in msg.get("tool_calls") or []:
             tc_id = tc.get("id")
             tc_name = (tc.get("function") or {}).get("name", "tool")
             if tc_id:

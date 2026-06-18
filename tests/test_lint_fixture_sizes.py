@@ -1,9 +1,8 @@
 """Q3: lint_fixture_sizes — every fixture <= 100 KB raw."""
+
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 MAX_FIXTURE_BYTES = 100 * 1024  # 100 KB

@@ -1,4 +1,5 @@
 """Generate HyperFrames scoreboard index.html from event timeline JSON."""
+
 from __future__ import annotations
 
 import json
@@ -86,7 +87,7 @@ def build_dynamic_timeline_js(timeline: dict[str, Any]) -> str:
     finale = float(timeline.get("finale_start", 91))
     vid_dur = float(timeline.get("video_duration", finale + 8))
     fade_out = float(timeline.get("fade_out", vid_dur - 0.4))
-    last_end = float(timeline.get("last_event_end", finale))
+    float(timeline.get("last_event_end", finale))
     term_lines: list[str] = ["// --- TERMINAL BLOCKS (timeline-driven) ---"]
     for seg in timeline.get("term_segments", []):
         tid = seg["term_id"]
@@ -95,7 +96,9 @@ def build_dynamic_timeline_js(timeline: dict[str, Any]) -> str:
         term_lines.append(f'tl.to("#{tid}", {{ opacity: 1, duration: 0.3 }}, {start});')
         term_lines.append(f'tl.to("#{tid}", {{ opacity: 0, duration: 0.3 }}, {end});')
 
-    return "\n".join(term_lines) + f"""
+    return (
+        "\n".join(term_lines)
+        + f"""
 
 // --- SCOREBOARD COUNTERS ---
 var counterPass = document.getElementById("counter-pass");
@@ -217,6 +220,7 @@ tl.to("#final-score", {{ textShadow: "0 0 36px rgba(0,255,170,0.55)", duration: 
 tl.to("#final-score", {{ textShadow: "0 0 8px rgba(0,255,170,0.15)", duration: 0.45 }}, F + 2.0);
 tl.to("#composition", {{ opacity: 0, duration: 0.35, ease: "power2.in" }}, {fade_out});
 """
+    )
 
 
 def generate_hf_index(
@@ -250,7 +254,10 @@ def generate_hf_index(
             '        <span style="font-size:20px; color:var(--pass); font-weight:700">▌BENCHMARK COMPLETE</span>\n'
             "      </div>",
         )
-    if ".sb-task-status.pass" in html and "opacity: 0" not in html.split(".sb-task-status {")[1][:200]:
+    if (
+        ".sb-task-status.pass" in html
+        and "opacity: 0" not in html.split(".sb-task-status {")[1][:200]
+    ):
         html = html.replace(
             "  .sb-task-status {\n    font-weight: 700;",
             "  .sb-task-status {\n    opacity: 0;\n    font-weight: 700;",
@@ -260,7 +267,11 @@ def generate_hf_index(
     html = html.replace("nex-agi/nex-n2-pro:free", model)
     html = html.replace("via kilocode", "xAI · Hermes Agent")
     html = re.sub(r'data-duration="\d+"', f'data-duration="{int(vid_dur)}"', html, count=1)
-    html = re.sub(r'<div id="final-score">\d+/\d+</div>', f'<div id="final-score">{passed}/{total}</div>', html)
+    html = re.sub(
+        r'<div id="final-score">\d+/\d+</div>',
+        f'<div id="final-score">{passed}/{total}</div>',
+        html,
+    )
     html = re.sub(
         r'<div id="final-rate"[^>]*>[\d.]+%</div>',
         f'<div id="final-rate" style="font-size:36px;color:var(--gold);margin-top:6px;font-family:\'JetBrains Mono\',monospace;font-weight:700;opacity:0">{rate:.1f}%</div>',
@@ -270,7 +281,9 @@ def generate_hf_index(
     if 'id="final-rate"' not in html:
         html = re.sub(
             r'(<div id="final-model">[^<]+</div>\n)',
-            r'\1    <div id="final-rate" style="font-size:36px;color:var(--gold);margin-top:6px;font-family:\'JetBrains Mono\',monospace;font-weight:700;opacity:0">' + f"{rate:.1f}%" + "</div>\n",
+            r'\1    <div id="final-rate" style="font-size:36px;color:var(--gold);margin-top:6px;font-family:\'JetBrains Mono\',monospace;font-weight:700;opacity:0">'
+            + f"{rate:.1f}%"
+            + "</div>\n",
             html,
             count=1,
         )
@@ -300,7 +313,9 @@ def generate_hf_index(
     if "var TIMELINE =" in html:
         html = re.sub(r"var TIMELINE = \{[\s\S]*?\};", timeline_js, html, count=1)
     else:
-        html = html.replace("var TOTAL_TASKS = EVENTS.length;", f"{timeline_js}\n\nvar TOTAL_TASKS = EVENTS.length;")
+        html = html.replace(
+            "var TOTAL_TASKS = EVENTS.length;", f"{timeline_js}\n\nvar TOTAL_TASKS = EVENTS.length;"
+        )
 
     dynamic_js = build_dynamic_timeline_js(timeline)
     html = re.sub(
@@ -319,7 +334,10 @@ def generate_hf_index(
         dest = out_dir / name
         if name == "meta.json":
             dest.write_text(
-                json.dumps({"id": "hf-benchmark", "name": f"HermesBench {model}", "version": "1.0.0"}, indent=2)
+                json.dumps(
+                    {"id": "hf-benchmark", "name": f"HermesBench {model}", "version": "1.0.0"},
+                    indent=2,
+                )
                 + "\n",
                 encoding="utf-8",
             )

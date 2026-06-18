@@ -1,13 +1,14 @@
 """Environment checks and optional Python dependency installation for hermesbench."""
+
 from __future__ import annotations
 
 import importlib
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -103,7 +104,7 @@ def collect_checks(*, profile: str = "run-real") -> list[Check]:
                 mod,
                 frozenset({"validate", "run", "run-real"}),
                 ok,
-                f"hermesbench doctor --install",
+                "hermesbench doctor --install",
                 pip_package=pip_pkg,
             )
         )
@@ -273,10 +274,7 @@ def run_doctor(
     from rich.table import Table
 
     console = Console(stderr=True)
-    if console_print:
-        log = console_print
-    else:
-        log = lambda s: console.print(s)  # noqa: E731
+    log = console_print or (lambda s: console.print(s))
 
     checks = collect_checks()
     visible = checks if profile == "all" else checks_for_profile(checks, profile)
@@ -296,7 +294,9 @@ def run_doctor(
     table = Table("Check", "Status", "Remediation")
     all_ok = True
     for c in visible:
-        status = "[green]✓[/green]" if c.ok else ("[yellow]~[/yellow]" if c.soft else "[red]✗[/red]")
+        status = (
+            "[green]✓[/green]" if c.ok else ("[yellow]~[/yellow]" if c.soft else "[red]✗[/red]")
+        )
         if not c.ok and not c.soft:
             all_ok = False
         table.add_row(c.name, status, c.remediation)

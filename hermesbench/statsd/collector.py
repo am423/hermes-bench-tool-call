@@ -2,12 +2,12 @@
 
 Run as: `python -m hermesbench.statsd --out /path/to/stats.jsonl --hz 5`
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -19,7 +19,7 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from hermesbench.statsd import pinning  # noqa: E402
-from hermesbench.statsd.sources import cpu, gpu_nvidia, memory, nvme, process  # noqa: E402,E501
+from hermesbench.statsd.sources import cpu, gpu_nvidia, memory, nvme, process  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

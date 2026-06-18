@@ -4,14 +4,12 @@ This file is a meta-test: it ensures that running pytest with the
 configured options in pyproject.toml works, and that the discovered
 tests don't have obvious structural problems.
 """
+
 from __future__ import annotations
 
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
-
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -42,13 +40,6 @@ def test_hermesbench_imports() -> None:
 
 def test_types_imports() -> None:
     from hermesbench.types import (
-        HardwareMetrics,
-        RunId,
-        RunMeta,
-        SamplingConfig,
-        TaskResult,
-        TaskSpec,
-        VerifierResult,
         VerifierStatus,
     )
 

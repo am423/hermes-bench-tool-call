@@ -1,4 +1,5 @@
 """RAM and swap stats."""
+
 from __future__ import annotations
 
 import psutil

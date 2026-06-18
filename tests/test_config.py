@@ -1,5 +1,8 @@
 """Tests for config loading."""
-import tempfile, os
+
+import os
+import tempfile
+
 from hermesbench.config import load_config
 
 

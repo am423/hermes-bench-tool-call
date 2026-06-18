@@ -1,4 +1,5 @@
 """Q-test: statsd samples for 5s, produces valid .stats.jsonl."""
+
 from __future__ import annotations
 
 import json
@@ -6,9 +7,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-
-import psutil
-import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -42,7 +40,7 @@ def test_statsd_runs(tmp_path: Path) -> None:
             proc.wait()
 
     assert out.exists(), "stats.jsonl not created"
-    lines = [json.loads(l) for l in out.read_text().splitlines() if l]
+    lines = [json.loads(line) for line in out.read_text().splitlines() if line]
     assert 5 <= len(lines) <= 15, f"expected ~10 samples at 5 Hz over 2s, got {len(lines)}"
     for s in lines[:3]:
         assert "t" in s and "cpu" in s

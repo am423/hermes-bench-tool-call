@@ -14,6 +14,7 @@ Run standalone:
 The Q3.1a test (`test_recorder_roundtrip`) verifies that a
 5-line bash session produces a valid .cast that re-renders.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,6 @@ from pathlib import Path
 try:
     import pyte
 except ImportError as e:  # pragma: no cover
-    print("pyte required: pip install pyte", file=sys.stderr)
     raise SystemExit(2) from e
 
 
@@ -100,7 +100,6 @@ def main(argv: list[str] | None = None) -> int:
     # pyte.Stream.feed expects str
     import select
 
-    buf = ""
     last_flush = start
     iterations = 0
     bytes_read = 0
@@ -115,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             stream.feed(chunk)
             # Debug: write to stderr so test can capture
             if os.environ.get("HERMESBENCH_DEBUG"):
-                print(f"[recorder] read {len(chunk)} bytes (total {bytes_read})", file=sys.stderr)
+                pass
         # Flush if enough time has passed
         now = time.time()
         if now - last_flush >= args.tick_ms / 1000.0:

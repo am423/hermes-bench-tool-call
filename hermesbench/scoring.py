@@ -8,6 +8,7 @@ a per-task scoring record.
 Stdlib-only — used by the runner and the CLI `score` subcommand
 without depending on hermes-agent.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,7 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-from hermesbench.types import HardwareMetrics, VerifierResult, VerifierStatus
+from hermesbench.types import HardwareMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +76,9 @@ def compute_hardware_metrics(stats_path: Path, trace_path: Path | None = None) -
                 gpu_powers.append(float(g["power_w"]))
             if g.get("temp_c") is not None:
                 gpu_temps.append(float(g["temp_c"]))
-            if g.get("throttle_reasons"):
+            if g.get("throttle_reasons") and prev_t is not None:
                 # Approximate: throttle was active this sample
-                if prev_t is not None:
-                    throttle_secs += s.get("t", 0) - prev_t
+                throttle_secs += s.get("t", 0) - prev_t
             # temp AUC
             if g.get("temp_c") is not None and prev_t is not None:
                 dt = s.get("t", 0) - prev_t
@@ -186,7 +186,7 @@ def compute_gen_joules_per_token(joined: list[tuple[float, float]]) -> float | N
     """Q44: gen_joules_per_output_token.
 
     Approximates the integral of power over the gen window
-    using mean power during gen × (output_tokens / mean_throughput).
+    using mean power during gen x (output_tokens / mean_throughput).
     For v0.1 we use a simpler proxy: mean power during gen ÷
     (output_tokens / wall_clock). Good enough for comparison.
     """
@@ -208,8 +208,7 @@ def score_run(
     results_dir: Path,
 ) -> dict[str, Any]:
     """Score an entire run. Returns a summary dict."""
-    tasks: list[dict[str, Any]] = []
-    for meta_file in sorted(results_dir.glob("*/task.yaml")) or []:  # noqa: F821
+    for _meta_file in sorted(results_dir.glob("*/task.yaml")) or []:
         # placeholder
         pass
     # For each task result, compute hardware metrics
@@ -276,7 +275,7 @@ def aggregate_results(run_paths: list[str]) -> list[dict]:
                     d = json.load(fh)
                     d["run_path"] = run_path
                     results.append(d)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 continue
     return results
 

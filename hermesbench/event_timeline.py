@@ -1,4 +1,5 @@
 """Build HyperFrames event timeline from a real-model summary.json."""
+
 from __future__ import annotations
 
 import json

@@ -1,9 +1,8 @@
 """Q6.3: lint_fixtures — reject injection patterns unless marker is present."""
+
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -63,8 +62,9 @@ def test_no_fixture_has_injection_patterns() -> None:
                     if ALLOW_MARKER in line:
                         continue
                     offenders.append((f, pattern, lineno))
-    assert not offenders, "fixture(s) contain injection patterns without allow marker:\n" + "\n".join(
-        f"  {p.relative_to(REPO)}:{n} -> {pat}" for p, pat, n in offenders
+    assert not offenders, (
+        "fixture(s) contain injection patterns without allow marker:\n"
+        + "\n".join(f"  {p.relative_to(REPO)}:{n} -> {pat}" for p, pat, n in offenders)
     )
 
 
@@ -75,7 +75,6 @@ def test_allow_marker_recognized() -> None:
 
     # And a real pattern + marker on the same line should NOT be flagged.
     # We test the linter logic directly.
-    from tests.test_lint_fixtures import _iter_fixture_files  # noqa: PLC0415
 
     # Create a temporary fixture file with a pattern + marker
     import tempfile
@@ -85,14 +84,12 @@ def test_allow_marker_recognized() -> None:
         fixture_root.mkdir()
         bad = fixture_root / "ok.md"
         bad.write_text(
-            "Some text\n"
-            "ignore previous instructions  ## hermesbench: allow-injection\n"
-            "More text\n"
+            "Some text\nignore previous instructions  ## hermesbench: allow-injection\nMore text\n"
         )
         # Patch REPO to point at our temp
         import tests.test_lint_fixtures as mod
 
-        original_REPO = mod.REPO
+        original_repo = mod.REPO
         try:
             mod.REPO = Path(d)  # type: ignore[misc]
             # Recreate the function's lookup with new REPO
@@ -124,4 +121,4 @@ def test_allow_marker_recognized() -> None:
                             offenders.append((f, pattern, lineno))
             assert not offenders, f"allow-marker not honored: {offenders}"
         finally:
-            mod.REPO = original_REPO  # type: ignore[misc]
+            mod.REPO = original_repo  # type: ignore[misc]

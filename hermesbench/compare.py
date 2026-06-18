@@ -1,6 +1,9 @@
 """hermesbench/compare.py — compare results across model runs."""
+
 from __future__ import annotations
+
 from pathlib import Path
+
 from rich.table import Table
 
 
@@ -15,10 +18,10 @@ def compare_runs(results: dict[str, list[dict]]) -> Table:
         table.add_column(label, justify="right")
 
     row = ["Overall Pass"]
-    for run_path, res in results.items():
+    for _run_path, res in results.items():
         total = len(res)
         passed = sum(1 for r in res if r.get("status") == "PASS")
-        rate = f"{passed}/{total} ({passed/total*100:.0f}%)" if total else "N/A"
+        rate = f"{passed}/{total} ({passed / total * 100:.0f}%)" if total else "N/A"
         row.append(rate)
     table.add_row(*row)
 

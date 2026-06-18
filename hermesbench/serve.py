@@ -1,6 +1,12 @@
 """hermesbench/serve.py — vLLM launch helper."""
+
 from __future__ import annotations
-import shutil, subprocess, sys, time, urllib.request
+
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
 from pathlib import Path
 
 
@@ -13,6 +19,7 @@ def launch_vllm(
 ) -> None:
     """Launch a vLLM server with benchmark-correct flags."""
     from hermesbench.config import load_config
+
     cfg = load_config(config_path)
     vllm_cfg = cfg.get("vllm", {})
     model_cfg = cfg.get("model", {})
@@ -23,13 +30,19 @@ def launch_vllm(
 
     vllm_bin = shutil.which("vllm")
     if not vllm_bin:
-        print("vllm not found. Install: pip install vllm")
         sys.exit(1)
 
-    cmd = [vllm_bin, "serve", model,
-           "--port", str(port),
-           "--served-model-name", served_name,
-           "--host", "0.0.0.0"]
+    cmd = [
+        vllm_bin,
+        "serve",
+        model,
+        "--port",
+        str(port),
+        "--served-model-name",
+        served_name,
+        "--host",
+        "0.0.0.0",
+    ]
 
     quant = quantization or flags.get("quantization")
     if quant:
@@ -56,34 +69,22 @@ def launch_vllm(
     cmd += ["--tool-call-parser", parser]
     cmd += ["--enforce-eager", "--trust-remote-code", "--enable-prefix-caching"]
 
-    print("Launching vLLM:")
-    print("  " + " ".join(cmd))
-    print()
-
     proc = subprocess.Popen(cmd)
 
-    print(f"Waiting for vLLM on port {port}...")
-    for i in range(90):
+    for _i in range(90):
         if proc.poll() is not None:
-            print(f"vLLM exited with code {proc.returncode}")
             sys.exit(1)
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2)
-            print(f"\nvLLM ready on port {port}")
-            print(f"  Model: {served_name}")
-            print(f"  Base URL: http://127.0.0.1:{port}/v1")
-            print(f"\n  Run: hermesbench run --all --model {served_name} --base-url http://127.0.0.1:{port}/v1")
             break
         except Exception:
             time.sleep(2)
     else:
-        print("vLLM failed to start within 180s")
         proc.terminate()
         sys.exit(1)
 
     try:
         proc.wait()
     except KeyboardInterrupt:
-        print("\nShutting down vLLM...")
         proc.terminate()
         proc.wait(timeout=10)

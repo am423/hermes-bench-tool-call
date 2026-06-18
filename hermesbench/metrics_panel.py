@@ -1,13 +1,22 @@
 """hermesbench/metrics_panel.py — live GPU/vLLM telemetry panel."""
+
 from __future__ import annotations
-import argparse, os, re, subprocess, sys, time, urllib.request
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
 from collections import deque
 from pathlib import Path
 
 
 class MetricsPanel:
-    def __init__(self, vllm_url="http://127.0.0.1:8999",
-                 runner_log=None, update_hz=2, brand="@mr-r0b0t"):
+    def __init__(
+        self, vllm_url="http://127.0.0.1:8999", runner_log=None, update_hz=2, brand="@mr-r0b0t"
+    ):
         self.vllm_url = vllm_url.rstrip("/")
         self.runner_log = runner_log
         self.interval = 1.0 / update_hz
@@ -31,9 +40,15 @@ class MetricsPanel:
     def poll_gpu(self):
         try:
             out = subprocess.check_output(
-                ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu,"
-                 "power.draw,memory.used,memory.total",
-                 "--format=csv,noheader,nounits"], text=True, timeout=5)
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,temperature.gpu,"
+                    "power.draw,memory.used,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                text=True,
+                timeout=5,
+            )
             p = out.strip().split(",")
             return {
                 "util": int(p[0].strip()),
@@ -54,14 +69,17 @@ class MetricsPanel:
                 if line.startswith("#"):
                     continue
                 if "generation_throughput" in line:
-                    v = re.search(r'\s+([\d.]+)$', line)
-                    if v: m["decode_tps"] = float(v.group(1))
+                    v = re.search(r"\s+([\d.]+)$", line)
+                    if v:
+                        m["decode_tps"] = float(v.group(1))
                 elif "gpu_cache_usage_perc" in line:
-                    v = re.search(r'\s+([\d.]+)$', line)
-                    if v: m["cache_usage"] = float(v.group(1))
+                    v = re.search(r"\s+([\d.]+)$", line)
+                    if v:
+                        m["cache_usage"] = float(v.group(1))
                 elif "generation_tokens_total" in line and "{" not in line:
-                    v = re.search(r'\s+(\d+)$', line)
-                    if v: m["gen_tokens"] = int(v.group(1))
+                    v = re.search(r"\s+(\d+)$", line)
+                    if v:
+                        m["gen_tokens"] = int(v.group(1))
             return m
         except Exception:
             return {}
@@ -72,11 +90,11 @@ class MetricsPanel:
         try:
             with open(self.runner_log) as f:
                 lines = f.readlines()
-            self.tasks_pass = sum(1 for l in lines if "PASS" in l)
-            fail = sum(1 for l in lines if "FAIL" in l)
+            self.tasks_pass = sum(1 for line in lines if "PASS" in line)
+            fail = sum(1 for line in lines if "FAIL" in line)
             self.tasks_done = self.tasks_pass + fail
-            for l in reversed(lines):
-                m = re.match(r'\s*-> (.+?)\.\.\.', l)
+            for line in reversed(lines):
+                m = re.match(r"\s*-> (.+?)\.\.\.", line)
                 if m:
                     self.current_task = m.group(1)
                     break
@@ -111,31 +129,17 @@ class MetricsPanel:
                 self.tokens_generated = vllm["gen_tokens"]
 
         elapsed = time.time() - self.start_time
-        pct = self.tasks_done / self.tasks_total * 100 if self.tasks_total else 0
-        eta = (elapsed / self.tasks_done * (self.tasks_total - self.tasks_done)
-               if self.tasks_done > 0 else 0)
-        jpt = self.energy_joules / self.tokens_generated if self.tokens_generated > 0 else 0
+        self.tasks_done / self.tasks_total * 100 if self.tasks_total else 0
+        (
+            elapsed / self.tasks_done * (self.tasks_total - self.tasks_done)
+            if self.tasks_done > 0
+            else 0
+        )
+        self.energy_joules / self.tokens_generated if self.tokens_generated > 0 else 0
 
         os.system("clear")
-        print(f"\u2554\u2550" * 24 + "\u2557")
-        print(f"\u2551  Live Telemetry \u2014 {self.brand}")
-        print(f"\u2560\u2550" * 24 + "\u2563")
         if gpu:
-            print(f"\u2551  GPU: {gpu['util']:>3}%  Temp: {gpu['temp']:>3}C  "
-                  f"Pwr: {gpu['power']:>5.1f}W  VRAM: {gpu['mem_used']}/{gpu['mem_total']}")
-        print(f"\u2551  Decode: {vllm.get('decode_tps',0):>5.1f} tok/s  "
-              f"Cache: {vllm.get('cache_usage',0)*100:.0f}%")
-        print(f"\u2560\u2550" * 24 + "\u2563")
-        print(f"\u2551  Tasks: {self.tasks_done}/{self.tasks_total} ({pct:.0f}%)  "
-              f"Passed: {self.tasks_pass}  ETA: {eta/60:.1f}m")
-        print(f"\u2551  Current: {self.current_task[:36]}")
-        print(f"\u2560\u2550" * 24 + "\u2563")
-        print(f"\u2551  GPU%  {self.sparkline(self.history['gpu_util'])}")
-        print(f"\u2551  PWR   {self.sparkline(self.history['power'])}")
-        print(f"\u2551  TEMP  {self.sparkline(self.history['temp'])}")
-        print(f"\u2560\u2550" * 24 + "\u2563")
-        print(f"\u2551  Energy: {self.energy_joules/1000:.1f} kJ  J/tok: {jpt:.3f} J")
-        print(f"\u255a\u2550" * 24 + "\u255d")
+            pass
         sys.stdout.flush()
 
     def run(self):
@@ -150,5 +154,4 @@ if __name__ == "__main__":
     parser.add_argument("--runner-log", default=None)
     parser.add_argument("--brand", default="@mr-r0b0t")
     args = parser.parse_args()
-    MetricsPanel(vllm_url=args.vllm_url, runner_log=args.runner_log,
-                 brand=args.brand).run()
+    MetricsPanel(vllm_url=args.vllm_url, runner_log=args.runner_log, brand=args.brand).run()

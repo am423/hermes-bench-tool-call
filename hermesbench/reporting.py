@@ -1,4 +1,5 @@
 """REPORT.md and optional HyperFrames assets from a completed run."""
+
 from __future__ import annotations
 
 import json

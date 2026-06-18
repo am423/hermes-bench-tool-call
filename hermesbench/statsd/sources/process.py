@@ -1,5 +1,8 @@
 """Model process tree: RSS, threads, %CPU, %MEM, num FDs (Q41)."""
+
 from __future__ import annotations
+
+import contextlib
 
 import psutil
 
@@ -21,10 +24,8 @@ def sample(pids: list[int]) -> dict | None:
                 total_rss += p.memory_info().rss
                 total_threads += p.num_threads()
                 total_cpu += p.cpu_percent(interval=None)
-                try:
+                with contextlib.suppress(psutil.AccessDenied, OSError):
                     total_fds += len(p.open_files())
-                except (psutil.AccessDenied, OSError):
-                    pass
             n += 1
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue

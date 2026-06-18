@@ -3,13 +3,11 @@
 Covers: hardware metrics computation, thermal AUC, pass_rate_by_difficulty,
 thermal-state-aware comparison, hardware summary schema.
 """
+
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
-
-import pytest
 
 from hermesbench.scoring import (
     compute_gen_joules_per_token,
@@ -34,18 +32,40 @@ def test_compute_hardware_metrics_with_data(tmp_path: Path) -> None:
     samples = [
         {
             "t": 0.0,
-            "cpu": {"util_pct": 50.0, "pkg_temp_c": 60.0, "pkg_power_w": 100.0, "per_core_util": [50, 50]},
+            "cpu": {
+                "util_pct": 50.0,
+                "pkg_temp_c": 60.0,
+                "pkg_power_w": 100.0,
+                "per_core_util": [50, 50],
+            },
             "gpu": [
-                {"name": "RTX 3090", "util_pct": 90, "temp_c": 75.0, "power_w": 300.0, "throttle_reasons": []}
+                {
+                    "name": "RTX 3090",
+                    "util_pct": 90,
+                    "temp_c": 75.0,
+                    "power_w": 300.0,
+                    "throttle_reasons": [],
+                }
             ],
             "ram": {"used_mib": 10000, "total_mib": 60000},
             "nvme": {"temp_c": 40.0},
         },
         {
             "t": 0.2,
-            "cpu": {"util_pct": 60.0, "pkg_temp_c": 65.0, "pkg_power_w": 110.0, "per_core_util": [60, 60]},
+            "cpu": {
+                "util_pct": 60.0,
+                "pkg_temp_c": 65.0,
+                "pkg_power_w": 110.0,
+                "per_core_util": [60, 60],
+            },
             "gpu": [
-                {"name": "RTX 3090", "util_pct": 95, "temp_c": 80.0, "power_w": 320.0, "throttle_reasons": []}
+                {
+                    "name": "RTX 3090",
+                    "util_pct": 95,
+                    "temp_c": 80.0,
+                    "power_w": 320.0,
+                    "throttle_reasons": [],
+                }
             ],
             "ram": {"used_mib": 11000, "total_mib": 60000},
             "nvme": {"temp_c": 41.0},
@@ -67,7 +87,15 @@ def test_compute_hardware_metrics_thermal_warning(tmp_path: Path) -> None:
             {
                 "t": 0.0,
                 "cpu": {"util_pct": 50, "pkg_temp_c": 60},
-                "gpu": [{"name": "X", "util_pct": 99, "temp_c": 92.0, "power_w": 300, "throttle_reasons": []}],
+                "gpu": [
+                    {
+                        "name": "X",
+                        "util_pct": 99,
+                        "temp_c": 92.0,
+                        "power_w": 300,
+                        "throttle_reasons": [],
+                    }
+                ],
                 "ram": {"used_mib": 1000},
                 "nvme": None,
             }
@@ -131,7 +159,15 @@ def test_score_run_with_passed_task(tmp_path: Path) -> None:
             {
                 "t": 0.0,
                 "cpu": {"util_pct": 50, "pkg_temp_c": 60},
-                "gpu": [{"name": "X", "util_pct": 90, "temp_c": 80, "power_w": 300, "throttle_reasons": []}],
+                "gpu": [
+                    {
+                        "name": "X",
+                        "util_pct": 90,
+                        "temp_c": 80,
+                        "power_w": 300,
+                        "throttle_reasons": [],
+                    }
+                ],
                 "ram": {"used_mib": 1000},
                 "nvme": None,
             }

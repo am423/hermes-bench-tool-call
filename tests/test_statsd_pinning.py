@@ -1,4 +1,5 @@
 """Q-test: pinning finds a quiet core and lowers priority."""
+
 from __future__ import annotations
 
 from hermesbench.statsd import pinning

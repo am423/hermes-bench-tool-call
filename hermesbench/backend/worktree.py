@@ -3,6 +3,7 @@
 See Q55: worktrees live at `traces/<run_id>/<task_id>/worktree/`
 and persist for the life of the run archive.
 """
+
 from __future__ import annotations
 
 import shutil

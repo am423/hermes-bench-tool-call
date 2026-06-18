@@ -2,12 +2,11 @@
 
 The wire format is documented in docs/trace_format_reconciliation.md.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
 
 from hermesbench.trace import read_trace
 
@@ -16,9 +15,7 @@ def test_read_trace_skips_blank_lines(tmp_path: Path) -> None:
     p = tmp_path / "x.jsonl"
     p.write_text(
         json.dumps({"role": "user", "content": "hi", "ts": 0.0}) + "\n"
-        "\n"
-        + json.dumps({"role": "assistant", "content": "hello", "ts": 1.0})
-        + "\n"
+        "\n" + json.dumps({"role": "assistant", "content": "hello", "ts": 1.0}) + "\n"
     )
     trace = read_trace(p)
     assert len(trace) == 2

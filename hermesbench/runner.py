@@ -5,15 +5,14 @@ Q7: statsd starts before hermes; Q42: hermes timeout drains trace.
 Q48: resource limits via tmux session ulimits.
 Q57: endpoint smoke test before run.
 """
+
 from __future__ import annotations
 
 import importlib.util
 import json
 import logging
-import os
 import platform
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -22,11 +21,9 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from hermesbench.backend import worktree as worktree_setup
 from hermesbench.backend.base import BaseHermesBenchEnvironment
-from hermesbench.backend.registry import get_backend
 from hermesbench.backend.tmux_isolated import TmuxIsolatedEnvironment
 from hermesbench.scoring import compute_hardware_metrics
 from hermesbench.types import (
@@ -97,9 +94,7 @@ def run_task(
             cast_path=Path(),
             stats_path=Path(),
             meta_path=Path(),
-            verifier_result=VerifierResult(
-                status=VerifierStatus.VERIFIER_ERROR, reason=str(e)
-            ),
+            verifier_result=VerifierResult(status=VerifierStatus.VERIFIER_ERROR, reason=str(e)),
             started_at=started_at,
             finished_at=time.time(),
             error=str(e),
@@ -118,9 +113,7 @@ def run_task(
 
     # 3. Endpoint smoke test — skip for real agent (uses hermes CLI which handles auth)
     if not dry_run and not use_real_agent and not _smoke_test_cache.get(model):
-        ok, msg = smoke_test_endpoint(
-            base_url, model, task.model_endpoint.__dict__
-        )
+        ok, msg = smoke_test_endpoint(base_url, model, task.model_endpoint.__dict__)
         if not ok:
             return TaskResult(
                 task_id=task.id,
@@ -148,9 +141,7 @@ def run_task(
             cast_path=cast_path,
             stats_path=stats_path,
             meta_path=Path(),
-            verifier_result=VerifierResult(
-                status=VerifierStatus.SKIPPED, reason="dry-run"
-            ),
+            verifier_result=VerifierResult(status=VerifierStatus.SKIPPED, reason="dry-run"),
             started_at=started_at,
             finished_at=time.time(),
         )
@@ -210,15 +201,23 @@ def run_task(
         )
 
         # 7. Spawn hermes (Q53 line-buffered)
-        from hermesbench.hermes_invocation import spawn_hermes, export_to_trace
+        from hermesbench.hermes_invocation import export_to_trace, spawn_hermes
 
         env_overrides = {
             "DISABLED_TOOLSETS": ",".join(
                 p
                 for p in (
-                    "kanban", "memory_providers", "observability", "image_gen",
-                    "video_gen", "computer_use", "cronjob", "messaging",
-                    "ha_*", "send_message", "delegate_task",
+                    "kanban",
+                    "memory_providers",
+                    "observability",
+                    "image_gen",
+                    "video_gen",
+                    "computer_use",
+                    "cronjob",
+                    "messaging",
+                    "ha_*",
+                    "send_message",
+                    "delegate_task",
                 )
                 if p not in task.hermes_plugins
             ),
@@ -252,6 +251,7 @@ def run_task(
 
             # Parse session_id from stderr
             import re as _re
+
             session_id = None
             for line in stderr_text.splitlines():
                 m = _re.search(r"session_id:\s*(\S+)", line)
@@ -265,7 +265,9 @@ def run_task(
                 hermes_bin = shutil.which("hermes") or str(hermes_path / "hermes")
                 export_result = subprocess.run(
                     [hermes_bin, "sessions", "export", "--session-id", session_id, str(export_tmp)],
-                    capture_output=True, text=True, timeout=30,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 if export_result.returncode == 0 and export_tmp.exists():
                     export_to_trace(export_tmp, trace_path)

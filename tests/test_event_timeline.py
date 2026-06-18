@@ -1,4 +1,5 @@
 """Tests for event timeline builder."""
+
 from __future__ import annotations
 
 import json
@@ -48,7 +49,12 @@ def test_write_event_timeline_file(tmp_path: Path) -> None:
                 "run_id": "r1",
                 "model": "m",
                 "tasks": [
-                    {"task_id": "t01_terminal_smoke/t01_echo", "name": "e", "status": "PASS", "elapsed_seconds": 1}
+                    {
+                        "task_id": "t01_terminal_smoke/t01_echo",
+                        "name": "e",
+                        "status": "PASS",
+                        "elapsed_seconds": 1,
+                    }
                 ],
             }
         ),

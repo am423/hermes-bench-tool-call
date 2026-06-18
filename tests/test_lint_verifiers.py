@@ -4,6 +4,7 @@ Rejects verifiers that import anything outside the allowlist,
 including dynamic imports via `importlib.import_module` or
 `__import__` (G8.2).
 """
+
 from __future__ import annotations
 
 import ast
@@ -60,13 +61,20 @@ def _collect_imports(tree: ast.AST) -> set[str]:
         elif isinstance(node, ast.Call):
             # Dynamic imports via importlib.import_module or __import__
             func = node.func
-            if isinstance(func, ast.Attribute) and func.attr == "import_module":
-                if isinstance(func.value, ast.Name) and func.value.id == "importlib":
-                    if node.args and isinstance(node.args[0], ast.Constant):
-                        imports.add(str(node.args[0].value).split(".")[0])
-            elif isinstance(func, ast.Name) and func.id == "__import__":
-                if node.args and isinstance(node.args[0], ast.Constant):
-                    imports.add(str(node.args[0].value).split(".")[0])
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "import_module"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "importlib"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+            ) or (
+                isinstance(func, ast.Name)
+                and func.id == "__import__"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+            ):
+                imports.add(str(node.args[0].value).split(".")[0])
     return imports
 
 
@@ -91,7 +99,7 @@ def test_verifier_files_use_stdlib_only() -> None:
         for name in _collect_imports(tree):
             if name not in STDLIB_ALLOWLIST:
                 bad.append((f, f"imports {name!r}"))
-    assert not bad, f"verifier(s) use non-allowlisted imports:\n" + "\n".join(
+    assert not bad, "verifier(s) use non-allowlisted imports:\n" + "\n".join(
         f"  {p.relative_to(REPO)}: {why}" for p, why in bad
     )
 
@@ -103,7 +111,9 @@ def test_template_verifier_passes_lint() -> None:
     tree = ast.parse(template.read_text())
     imports = _collect_imports(tree)
     # Template uses __future__ + dataclasses + typing + pathlib — all allowed
-    assert imports <= STDLIB_ALLOWLIST, f"template uses non-allowlisted: {imports - STDLIB_ALLOWLIST}"
+    assert imports <= STDLIB_ALLOWLIST, (
+        f"template uses non-allowlisted: {imports - STDLIB_ALLOWLIST}"
+    )
 
 
 def test_no_verifier_imports_hermesbench() -> None:

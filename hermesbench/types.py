@@ -1,9 +1,10 @@
 """Core type definitions shared across hermesbench."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,7 +13,7 @@ from typing import Any, Literal
 # ----------------------------------------------------------------------------
 
 
-class VerifierStatus(str, Enum):
+class VerifierStatus(StrEnum):
     """All possible verifier outcomes."""
 
     PASS = "PASS"

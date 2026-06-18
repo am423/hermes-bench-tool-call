@@ -2,6 +2,7 @@
 
 Q41: tries RAPL MSR (root-only) first, falls back to TDP estimate.
 """
+
 from __future__ import annotations
 
 import logging

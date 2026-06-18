@@ -1,4 +1,5 @@
 """Q-test: per-source sampling functions return the expected schema."""
+
 from __future__ import annotations
 
 from hermesbench.statsd.sources import cpu, gpu_nvidia, memory, nvme, process

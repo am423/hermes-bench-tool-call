@@ -1,6 +1,11 @@
 """hermesbench/render.py — render asciinema .cast to .gif or .mp4."""
+
 from __future__ import annotations
-import os, shutil, subprocess, tempfile
+
+import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -21,8 +26,7 @@ def render_cast(
 
     if not shutil.which("agg"):
         raise RuntimeError(
-            "agg not installed. Install: cargo install agg\n"
-            "Or: https://github.com/asciinema/agg"
+            "agg not installed. Install: cargo install agg\nOr: https://github.com/asciinema/agg"
         )
 
     if fmt == "gif":
@@ -32,12 +36,26 @@ def render_cast(
             gif_tmp = tmp.name
         try:
             subprocess.run(["agg", str(cast), gif_tmp], check=True)
-            subprocess.run([
-                "ffmpeg", "-y", "-i", gif_tmp,
-                "-vf", "fps=30",
-                "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-                "-pix_fmt", "yuv420p", str(out_path),
-            ], check=True)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    gif_tmp,
+                    "-vf",
+                    "fps=30",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "fast",
+                    "-crf",
+                    "18",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(out_path),
+                ],
+                check=True,
+            )
         finally:
             os.unlink(gif_tmp)
     else:

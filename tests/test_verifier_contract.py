@@ -2,6 +2,7 @@
 
 Covers: verifier contract (Q35), VerifierResult type, stdlib allowlist.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from hermesbench.types import TaskSpec, VerifierResult, VerifierStatus
+from hermesbench.types import VerifierStatus
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -92,7 +93,5 @@ def test_template_verifier_passes_contract() -> None:
         assert hasattr(result, "reason") and hasattr(result, "details")
         # The template expects a file to exist; tmp dir is empty so it FAILS.
         # That's fine — the contract is just "returns a VerifierResult-like."
-        status_val = (
-            result.status.value if hasattr(result.status, "value") else result.status
-        )
+        status_val = result.status.value if hasattr(result.status, "value") else result.status
         assert status_val in {s.value for s in VerifierStatus}

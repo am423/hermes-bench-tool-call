@@ -3,9 +3,11 @@
 The benchmark uses one of the registered backends to actually run
 commands. v0.1 ships `tmux_isolated` only; v0.2+ may add others.
 """
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, TypeVar
+from collections.abc import Callable
+from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from hermesbench.backend.base import BaseHermesBenchEnvironment
@@ -34,9 +36,7 @@ def register_backend(name: str) -> Callable[[type[T]], type[T]]:
 
 def get_backend(name: str) -> type[BaseHermesBenchEnvironment]:
     if name not in _BACKENDS:
-        raise KeyError(
-            f"unknown backend {name!r}. Available: {sorted(_BACKENDS)}"
-        )
+        raise KeyError(f"unknown backend {name!r}. Available: {sorted(_BACKENDS)}")
     return _BACKENDS[name]
 
 

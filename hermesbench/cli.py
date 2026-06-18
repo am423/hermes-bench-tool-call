@@ -1,11 +1,10 @@
 """hermesbench CLI: list, validate, run, score, render, doctor, archive, etc."""
+
 from __future__ import annotations
 
 import json
-import logging
 import sys
 from pathlib import Path
-from typing import Any
 
 import click
 from rich.console import Console
@@ -114,9 +113,8 @@ def _resolve_run_task_ids(
     if category:
         for td in _discover_tasks(root):
             spec = _load_task(td)
-            if spec.id.startswith(category + "/") or spec.id == category:
-                if spec.id not in ids:
-                    ids.append(spec.id)
+            if (spec.id.startswith(category + "/") or spec.id == category) and spec.id not in ids:
+                ids.append(spec.id)
     if not ids:
         return []
     known = {_load_task(td).id for td in _discover_tasks(root)}
@@ -159,7 +157,9 @@ def _invoke_benchmark_run(
             n = len(_discover_tasks(root))
             console.print(f"[green]dry-run[/green]: would run all {n} tasks with model={model}")
         else:
-            console.print(f"[green]dry-run[/green]: would run {len(task_list)} task(s): {', '.join(task_list)}")
+            console.print(
+                f"[green]dry-run[/green]: would run {len(task_list)} task(s): {', '.join(task_list)}"
+            )
         raise SystemExit(0)
 
     code = run_real_benchmark(
@@ -262,8 +262,14 @@ def _invoke_legacy_run(
 
 @main.command("run")
 @click.option("--model", "-m", default="grok-composer-2.5-fast", help="Model name for run_agent.py")
-@click.option("--base-url", default="https://api.kilo.ai/api/gateway", help="OpenAI-compatible base URL (ignored with --use-hermes-config)")
-@click.option("--use-hermes-config", is_flag=True, help="Use ~/.hermes/config.yaml provider (xai-oauth, etc.)")
+@click.option(
+    "--base-url",
+    default="https://api.kilo.ai/api/gateway",
+    help="OpenAI-compatible base URL (ignored with --use-hermes-config)",
+)
+@click.option(
+    "--use-hermes-config", is_flag=True, help="Use ~/.hermes/config.yaml provider (xai-oauth, etc.)"
+)
 @click.option("--toolsets", default="all", help="enabled_toolsets for Hermes")
 @click.option("--run-id", default=None, help="Results/traces directory name")
 @click.option("--task", "tasks", multiple=True, help="Task ID (repeatable)")
@@ -284,7 +290,9 @@ def _invoke_legacy_run(
 @click.option("--results-dir", "-r", default="./results", help="(legacy engine) Output directory")
 @click.option("--n-runs", "-n", type=int, default=1, help="(legacy engine) Run each task N times")
 @click.option("--resume", "resume_dir", default=None, help="(legacy engine) Resume from run dir")
-@click.option("--config", "config_path", default=None, help="(legacy engine) Path to hermesbench.yaml")
+@click.option(
+    "--config", "config_path", default=None, help="(legacy engine) Path to hermesbench.yaml"
+)
 def run_benchmark_cmd(
     model: str,
     base_url: str,
@@ -390,7 +398,11 @@ def run_real_cmd(
 
 @main.command()
 @click.option("--install", is_flag=True, help="pip install missing Python packages")
-@click.option("--profile", default="all", type=click.Choice(["all", "validate", "run", "run-real", "render", "video"]))
+@click.option(
+    "--profile",
+    default="all",
+    type=click.Choice(["all", "validate", "run", "run-real", "render", "video"]),
+)
 def doctor(install: bool, profile: str) -> None:
     """Pre-flight checks; use --install to fix pip dependencies."""
     from hermesbench.preflight import run_doctor

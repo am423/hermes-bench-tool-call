@@ -1,4 +1,5 @@
 """Fake hermes-agent for optional pipeline tests only — not used by `hermesbench run`."""
+
 from __future__ import annotations
 
 import json
@@ -30,7 +31,6 @@ def emit(
     if tool_name:
         msg["name"] = tool_name
     msg.update(extras)
-    print(json.dumps(msg), flush=True)
 
 
 def make_tool_call(name: str, args: dict, call_id: str) -> dict:
@@ -52,16 +52,30 @@ def main() -> int:
         emit(
             "assistant",
             reasoning="I'll run the echo command.",
-            tool_calls=[make_tool_call("terminal", {"command": "echo hello-hermesbench"}, "call_e1")],
+            tool_calls=[
+                make_tool_call("terminal", {"command": "echo hello-hermesbench"}, "call_e1")
+            ],
             ts=t,
         )
-        emit("tool", tool_call_id="call_e1", tool_name="terminal", content="[terminal] hello-hermesbench", ts=t + 0.3)
+        emit(
+            "tool",
+            tool_call_id="call_e1",
+            tool_name="terminal",
+            content="[terminal] hello-hermesbench",
+            ts=t + 0.3,
+        )
         emit("assistant", content="Command output:\n```\nhello-hermesbench\n```", ts=t + 0.4)
     elif "broken_divide" in prompt.lower():
         emit(
             "assistant",
             reasoning="patch",
-            tool_calls=[make_tool_call("patch", {"path": "broken_divide.py", "old_string": "x", "new_string": "y"}, "call_p1")],
+            tool_calls=[
+                make_tool_call(
+                    "patch",
+                    {"path": "broken_divide.py", "old_string": "x", "new_string": "y"},
+                    "call_p1",
+                )
+            ],
             ts=t,
         )
         broken_path = worktree / "broken_divide.py"

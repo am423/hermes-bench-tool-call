@@ -1,6 +1,9 @@
 """Tests for scoring aggregation and category breakdown."""
-import json, tempfile
+
+import json
+import tempfile
 from pathlib import Path
+
 from hermesbench.scoring import aggregate_results, category_breakdown, difficulty_weighted
 
 
@@ -8,8 +11,9 @@ def test_aggregate_results():
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp) / "run" / "t01_smoke" / "t01_echo"
         d.mkdir(parents=True)
-        (d / "verifier_result.json").write_text(json.dumps({
-            "task_id": "t01_smoke/t01_echo", "status": "PASS", "difficulty": 1}))
+        (d / "verifier_result.json").write_text(
+            json.dumps({"task_id": "t01_smoke/t01_echo", "status": "PASS", "difficulty": 1})
+        )
         results = aggregate_results([tmp])
         assert len(results) == 1
         assert results[0]["status"] == "PASS"

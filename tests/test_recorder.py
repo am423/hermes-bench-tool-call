@@ -1,4 +1,5 @@
 """Q3.1a: test_recorder_roundtrip — produce a .cast, verify it parses."""
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,7 @@ def test_recorder_roundtrip(tmp_path: Path) -> None:
     """5-line bash session should produce a valid asciinema v2 .cast."""
     out = tmp_path / "x.cast"
     ansi = (
-        "\x1b[?25l"        # hide cursor
+        "\x1b[?25l"  # hide cursor
         "echo hello\n"
         "echo world\n"
         "sleep 0.1\n"
@@ -94,11 +95,9 @@ def test_recorder_via_tmux_pipe_pane(tmp_path: Path) -> None:
     """
     work = tmp_path
     cast = work / "tmux.cast"
-    err_log = work / "recorder.err"
+    work / "recorder.err"
     session = f"hb_test_{int(time.time())}"
-    recorder_cmd = (
-        f"{sys.executable} -u {RECORDER} --out {cast} --cols 200 --rows 50"
-    )
+    recorder_cmd = f"{sys.executable} -u {RECORDER} --out {cast} --cols 200 --rows 50"
     subprocess.run(
         ["tmux", "new-session", "-d", "-s", session, "-c", str(work), "-x", "200", "-y", "50"],
         check=True,

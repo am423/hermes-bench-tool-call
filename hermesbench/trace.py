@@ -5,6 +5,7 @@ reconciled in `docs/trace_format_reconciliation.md` (Q52).
 
 Stdlib only.
 """
+
 from __future__ import annotations
 
 import json
@@ -41,7 +42,7 @@ def _normalize(msg: dict[str, Any]) -> dict[str, Any]:
     - tool arguments are JSON-encoded strings inside `function.arguments`
     """
     out = {"role": msg.get("role"), "content": msg.get("content"), "ts": msg.get("ts", 0.0)}
-    if "tool_calls" in msg and msg["tool_calls"]:
+    if msg.get("tool_calls"):
         out["tool_calls"] = msg["tool_calls"]
     if "tool_call_id" in msg:
         out["tool_call_id"] = msg["tool_call_id"]

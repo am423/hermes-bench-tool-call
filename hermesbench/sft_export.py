@@ -1,5 +1,7 @@
 """hermesbench/sft_export.py — export traces to SFT-ready JSONL."""
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -40,16 +42,18 @@ def export_sft(run_paths: list[str], out_path: str) -> int:
             task_id = ""
             parts = trace_file.parts
             for i, part in enumerate(parts):
-                if part.startswith("t") and i > 0 and "results" in str(parts[i-1]):
+                if part.startswith("t") and i > 0 and "results" in str(parts[i - 1]):
                     task_id = part
                     break
 
-            examples.append({
-                "messages": formatted_msgs,
-                "loss_mask": loss_mask,
-                "source": str(trace_file),
-                "task_id": task_id,
-            })
+            examples.append(
+                {
+                    "messages": formatted_msgs,
+                    "loss_mask": loss_mask,
+                    "source": str(trace_file),
+                    "task_id": task_id,
+                }
+            )
 
     with open(out_path, "w") as f:
         for ex in examples:

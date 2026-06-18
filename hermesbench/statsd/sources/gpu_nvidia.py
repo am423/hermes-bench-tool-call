@@ -3,8 +3,10 @@
 Q15: hard dep on pynvml when an NVIDIA GPU is present; graceful
 degrade to sysfs for AMD/Intel.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -92,16 +94,12 @@ def _read_amd_intel_sysfs() -> list[dict]:
             entry: dict = {"vendor": name, "name": f"card{card.name.split('card')[-1]}"}
             t = hwmon / "temp1_input"
             if t.exists():
-                try:
+                with contextlib.suppress(ValueError):
                     entry["temp_c"] = int(t.read_text().strip()) / 1000.0
-                except ValueError:
-                    pass
             p = hwmon / "power1_average"
             if p.exists():
-                try:
+                with contextlib.suppress(ValueError):
                     entry["power_w"] = int(p.read_text().strip()) / 1_000_000.0
-                except ValueError:
-                    pass
             out.append(entry)
     return out
 
