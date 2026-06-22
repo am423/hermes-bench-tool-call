@@ -229,9 +229,18 @@ def _run_hermes(
         "PYTHONUNBUFFERED": "1",
         "TERM": "xterm-256color",
     }
+    # Local OpenAI-compatible servers (vLLM, llama.cpp, etc.) often do not
+    # require authentication, but Hermes Agent's run_agent.py still needs an
+    # explicit API key argument to stay on the OpenAI-compatible provider path.
+    # If this is omitted, runs can fall back to the user's configured Hermes
+    # provider even when --base_url is supplied, producing misleading 401/403
+    # failures against the wrong endpoint. Use a harmless placeholder when the
+    # caller has not exported OPENAI_API_KEY.
+    api_key = os.environ.get("OPENAI_API_KEY") or "dummy"
     if not use_hermes_config and base_url:
         env["OPENAI_BASE_URL"] = base_url
         env["OPENAI_MODEL"] = model
+        env["OPENAI_API_KEY"] = api_key
     cmd = [
         hermes_python(hermes_path),
         "-u",
@@ -246,7 +255,7 @@ def _run_hermes(
         task.prompt,
     ]
     if not use_hermes_config and base_url:
-        cmd.extend(["--base_url", base_url])
+        cmd.extend(["--base_url", base_url, "--api_key", api_key])
     log_file = log_path.open("w", encoding="utf-8")
     proc = subprocess.Popen(
         cmd,

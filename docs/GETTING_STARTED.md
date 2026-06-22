@@ -48,7 +48,7 @@ hermesbench run --use-hermes-config --model YOUR_MODEL \
   --task t01_terminal_smoke/t01_echo --toolsets all
 ```
 
-## Full benchmark (48 tasks)
+## Full benchmark (61 tasks)
 
 ```bash
 hermesbench run --use-hermes-config --model YOUR_MODEL --all --toolsets all
@@ -72,5 +72,7 @@ Use `hermesbench run` with an OpenAI-compatible server (llama.cpp, vLLM, etc.):
 hermesbench run --task t01_terminal_smoke/t01_echo \
   --model your-gguf-name --base-url http://127.0.0.1:8080/v1
 ```
+
+Do **not** add `--use-hermes-config` for local no-auth servers. HermesBench passes the local `--base-url` and a placeholder API key to Hermes Agent so the request stays on the OpenAI-compatible endpoint instead of falling back to the user's configured provider.
 
 Note: **`hermesbench run`** is the only benchmark entry point (real Hermes Agent). `tests/support/fake_hermes.py` is for optional pipeline tests only.

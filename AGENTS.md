@@ -125,6 +125,8 @@ export OPENAI_BASE_URL=http://127.0.0.1:8080/v1   # optional override
 hermesbench run --model local-model --all --base-url "$OPENAI_BASE_URL"
 ```
 
+For local no-auth servers, `OPENAI_API_KEY` may be unset; HermesBench injects a `dummy` key into `run_agent.py` so the run stays on the supplied `--base-url`. If logs show a cloud/OAuth endpoint instead of the local URL, mark that run invalid and rerun with the current endpoint-routing fix.
+
 ### Dry-run (task selection only)
 
 ```bash
@@ -200,6 +202,7 @@ Exit codes: **4** = user error (bad task id, missing args). Benchmark partial fa
 |---------|-----|
 | `No module named 'fire'` / `dotenv` | Use Hermes `.venv`: `hermesbench doctor --profile run` |
 | OAuth / wrong provider | Add `--use-hermes-config` |
+| Local `--base-url` run routes to cloud/OAuth and returns 401/403 | Do **not** use `--use-hermes-config`; update HermesBench so `--api_key dummy` is passed with `--base_url` |
 | `Could not find hermes-agent` | Clone + `HERMES_AGENT_PATH` |
 | All tasks FAIL, empty trajectory | Model name wrong or API errors — check `traces/.../run_agent.log` |
 | `Specify --task or --all` | CLI requires explicit scope |
