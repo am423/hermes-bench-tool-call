@@ -472,6 +472,9 @@ def run_real_benchmark(
     traces_root.mkdir(parents=True, exist_ok=True)
     run_hermes_home = Path.home() / ".hermes" / "tmp" / f"hb-hermes-home-{rid}"
     run_hermes_home.mkdir(parents=True, exist_ok=True)
+    config_path = run_hermes_home / "config.yaml"
+    if not config_path.exists():
+        config_path.write_text("model:\n  context_length: 100000\n", encoding="utf-8")
 
     if prior_summary and resume:
         summary = dict(prior_summary)
