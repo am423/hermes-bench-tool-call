@@ -5,7 +5,7 @@ difficulty: 2
 tags: [process, poll]
 
 prompt: |
-  Start a 3-second `sleep 30` in the background, then use `process` to poll it for output.
+  Start `sleep 30` as a background terminal process, then use the `process` tool with `action: "poll"` on the returned session id.
 
 allowed_tools:
   - process

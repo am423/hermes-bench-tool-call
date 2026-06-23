@@ -5,7 +5,7 @@ difficulty: 3
 tags: [process, kill]
 
 prompt: |
-  Find the running `sleep 999` process and kill it.
+  Start `sleep 999` as a background terminal process, then use the `process` tool with `action: "kill"` on the returned session id.
 
 allowed_tools:
   - process

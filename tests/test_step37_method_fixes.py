@@ -72,11 +72,15 @@ def intersperse(numbers: List[int], delimeter: int) -> List[int]:
 
 def test_prompt_verifier_alignment_for_prior_step37_failures() -> None:
     glob_prompt = (REPO / "tasks/t04_search_grep/t02_glob/task.yaml").read_text(encoding="utf-8")
+    kill_prompt = (REPO / "tasks/t06_process_mgmt/t02_kill/task.yaml").read_text(encoding="utf-8")
+    poll_prompt = (REPO / "tasks/t06_process_mgmt/t03_poll/task.yaml").read_text(encoding="utf-8")
     zombie_prompt = (REPO / "tasks/t06_process_mgmt/t05_zombie/task.yaml").read_text(encoding="utf-8")
     todo_prompt = (REPO / "tasks/t07_todo_plan/t02_update/task.yaml").read_text(encoding="utf-8")
     no_result_prompt = (REPO / "tasks/t09_web_lookup/t03_no_result/task.yaml").read_text(encoding="utf-8")
 
     assert "search_files" in glob_prompt and "file_glob" in glob_prompt
+    assert "process` tool" in kill_prompt and 'action: "kill"' in kill_prompt
+    assert "process` tool" in poll_prompt and 'action: "poll"' in poll_prompt
     assert "ps -eo pid,ppid,stat,comm" in zombie_prompt and "Do not use `ps aux`" in zombie_prompt
     assert "todo` tool" in todo_prompt and "completed" in todo_prompt
     assert "web_search" in no_result_prompt
