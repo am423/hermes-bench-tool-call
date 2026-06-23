@@ -143,122 +143,159 @@ def _display_status(task: dict[str, Any]) -> str:
     return status
 
 
-def generate_run_html_report(summary_path: Path, out_path: Path | None = None, repo_root: Path | None = None) -> Path:
-    """Generate the canonical self-contained flat-dark HTML report for one run.
+def _task_trace_metrics(task: dict[str, Any]) -> dict[str, Any]:
+    trace_path = Path(str(task.get("trace") or ""))
+    tool_counts: dict[str, int] = defaultdict(int)
+    if trace_path.is_file() and trace_path.stat().st_size > 0:
+        for line in trace_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if not line.strip():
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(msg.get("tool_calls"), list):
+                for tc in msg["tool_calls"]:
+                    name = ((tc.get("function") or {}).get("name") or "tool")
+                    tool_counts[str(name)] += 1
+    raw_log = Path(str(task.get("raw_log") or ""))
+    api_calls = 0
+    if raw_log.is_file():
+        text = raw_log.read_text(encoding="utf-8", errors="ignore")
+        api_calls = len(re.findall(r"Making API call #", text))
+    return {
+        "api_calls": api_calls,
+        "tool_calls": sum(tool_counts.values()),
+        "tools": ", ".join(f"{name}x{count}" for name, count in sorted(tool_counts.items(), key=lambda x: (-x[1], x[0]))),
+    }
 
-    The report is intentionally richer than REPORT.md: it includes category scores,
-    all task prompts, verifier reasons, trace/log paths, and optional telemetry CSV
-    summaries when present under results/<run_id>/.
-    """
+
+def _median(xs: list[float]) -> float:
+    return statistics.median(xs) if xs else 0.0
+
+
+def _display_model_title(model: str) -> str:
+    lower = model.lower()
+    if "stepfun" in lower or "step" in lower:
+        return "Step 3.7 Flash NVFP4"
+    if "qwen36" in lower or "qwen3.6" in lower:
+        return "Qwen 3.6 27B NVFP4"
+    return model.replace("_", "-")
+
+
+def _quality_label(infra: int, trace_ok: bool, endpoint_ok: bool) -> tuple[str, str]:
+    if infra == 0 and trace_ok and endpoint_ok:
+        return "QUALITY GATE PASS", "trusted"
+    return "QUALITY GATE FAIL", "fail"
+
+
+def generate_run_html_report(summary_path: Path, out_path: Path | None = None, repo_root: Path | None = None) -> Path:
+    """Generate the canonical Qwen-style self-contained flat-dark HTML report."""
     root = (repo_root or REPO).resolve()
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     tasks = summary.get("tasks") or []
-    run_id = summary.get("run_id", summary_path.parent.name)
-    model = summary.get("model", "unknown")
-    passed = sum(1 for t in tasks if _display_status(t) == "PASS")
-    total = len(tasks)
-    infra = sum(1 for t in tasks if _display_status(t) == "INFRA_ERROR")
-    failed = sum(1 for t in tasks if _display_status(t) == "FAIL")
-    rate = _pct(passed, total)
+    run_id = str(summary.get("run_id", summary_path.parent.name))
+    model = str(summary.get("model", "unknown"))
+    base_url = str(summary.get("base_url") or "")
+    title = _display_model_title(model)
 
-    by_cat: dict[str, dict[str, Any]] = defaultdict(lambda: {"pass": 0, "fail": 0, "elapsed": 0.0, "tasks": []})
+    display_statuses = [_display_status(t) for t in tasks]
+    passed = sum(1 for s in display_statuses if s == "PASS")
+    infra = sum(1 for s in display_statuses if s == "INFRA_ERROR")
+    total = len(tasks)
+    rate = _pct(passed, total)
+    elapsed_values = [float(t.get("elapsed_seconds") or 0) for t in tasks]
+    total_elapsed = sum(elapsed_values)
+    median_elapsed = _median(elapsed_values)
+
+    metrics_by_task = {t.get("task_id", ""): _task_trace_metrics(t) for t in tasks}
+    api_calls = sum(int(m["api_calls"]) for m in metrics_by_task.values())
+    tool_calls = sum(int(m["tool_calls"]) for m in metrics_by_task.values())
+
+    trace_present = 0
+    endpoint_logs = 0
     for task in tasks:
+        trace = Path(str(task.get("trace") or ""))
+        if trace.exists() and trace.stat().st_size > 0:
+            trace_present += 1
+        raw_log = Path(str(task.get("raw_log") or ""))
+        if raw_log.exists() and (not base_url or base_url in raw_log.read_text(encoding="utf-8", errors="ignore")):
+            endpoint_logs += 1
+    trace_ok = trace_present == total and total > 0
+    endpoint_ok = endpoint_logs == total and total > 0
+    quality_text, quality_class = _quality_label(infra, trace_ok, endpoint_ok)
+
+    by_cat: dict[str, dict[str, Any]] = defaultdict(lambda: {"pass": 0, "fail": 0, "infra": 0, "elapsed": [], "tasks": []})
+    for task, status in zip(tasks, display_statuses, strict=True):
         cat = _category(task.get("task_id", "unknown"))
-        status = _display_status(task)
         if status == "PASS":
             by_cat[cat]["pass"] += 1
         elif status == "INFRA_ERROR":
-            by_cat[cat].setdefault("infra", 0)
             by_cat[cat]["infra"] += 1
         else:
             by_cat[cat]["fail"] += 1
-        by_cat[cat]["elapsed"] += float(task.get("elapsed_seconds") or 0)
+        by_cat[cat]["elapsed"].append(float(task.get("elapsed_seconds") or 0))
         by_cat[cat]["tasks"].append(task)
 
-    cat_rows = []
+    cat_cards = []
     for cat, data in sorted(by_cat.items()):
-        cat_total = int(data["pass"] + data["fail"] + data.get("infra", 0))
+        cat_total = int(data["pass"] + data["fail"] + data["infra"])
         cat_rate = _pct(int(data["pass"]), cat_total)
-        cls = _status_class(cat_rate)
-        cat_rows.append(
-            f"""
-<tr>
-  <td><code>{_esc(cat)}</code></td><td>{data['pass']}/{cat_total}</td><td><span class='pill {cls}'>{cat_rate:.0f}%</span></td>
-  <td>{int(data.get('infra', 0))}</td><td>{float(data['elapsed']) / 60:.1f} min</td>
-  <td><div class='bar'><i style='width:{cat_rate:.1f}%'></i></div></td>
-</tr>"""
+        extra = f" · infra {data['infra']}" if data["infra"] else ""
+        label = "HumanEval Micro" if cat == "t13_humaneval_micro" else cat
+        cat_cards.append(
+            f"<article class='card cat'><div class='split'><b>{_esc(label)}</b><span>{data['pass']}/{cat_total}</span></div>"
+            f"<div class='bar'><i style='width:{cat_rate:.1f}%'></i></div>"
+            f"<small>{cat_rate:.1f}% · median {_median(data['elapsed']):.1f}s{extra}</small></article>"
         )
 
-    task_cards = []
-    for task in tasks:
-        task_id = task.get("task_id", "")
+    failure_reasons = defaultdict(int)
+    failed_rows = []
+    all_rows = []
+    for task, status in zip(tasks, display_statuses, strict=True):
+        task_id = str(task.get("task_id", ""))
         meta = _task_meta(root, task_id)
-        status = _display_status(task)
-        ok = status == "PASS"
-        cls = "pass" if ok else "infra" if status == "INFRA_ERROR" else "fail"
+        reason = str(task.get("reason") or "")
+        metrics = metrics_by_task.get(task_id, {"api_calls": 0, "tool_calls": 0, "tools": ""})
         elapsed_s = float(task.get("elapsed_seconds") or 0)
-        task_cards.append(
-            f"""
-<details class='task {cls}'>
-  <summary>
-    <span class='status {cls}'>{_esc(status)}</span>
-    <code>{_esc(task_id)}</code>
-    <span>{_esc(task.get('name', ''))}</span>
-    <em>{elapsed_s:.1f}s</em>
-  </summary>
-  <div class='taskbody'>
-    <div class='kv'><b>Difficulty</b><span>{_esc(task.get('difficulty'))}</span></div>
-    <div class='kv'><b>Allowed tools</b><span>{_esc(meta.get('allowed_tools') or '—')}</span></div>
-    <div class='kv'><b>Verifier reason</b><span>{_esc(task.get('reason', ''))}</span></div>
-    <h4>Prompt</h4><pre>{_esc(meta.get('prompt', ''))}</pre>
-    <h4>Artifacts</h4>
-    <pre>{_esc(task.get('trace', ''))}\n{_esc(task.get('raw_log', ''))}\n{_esc(task.get('verifier_result', ''))}</pre>
-  </div>
-</details>"""
+        if status != "PASS":
+            failure_reasons[reason or status] += 1
+            failed_rows.append(
+                f"<tr class='{_esc(status.lower())}'><td><code>{_esc(task_id)}</code></td><td>{_esc(task.get('name',''))}</td>"
+                f"<td>{_esc(reason)}</td><td>{elapsed_s:.1f}s</td><td>{_esc(metrics.get('tools',''))}</td></tr>"
+            )
+        all_rows.append(
+            f"<tr class='{_esc(status.lower())}'><td><code>{_esc(task_id)}</code><br><small>{_esc(task.get('name',''))}</small></td>"
+            f"<td><span class='pill {('pass' if status == 'PASS' else 'infra' if status == 'INFRA_ERROR' else 'fail')}'>{_esc(status)}</span></td>"
+            f"<td>{_esc(meta.get('prompt',''))}</td><td>{_esc(reason)}</td><td>{elapsed_s:.1f}s</td>"
+            f"<td>{int(metrics.get('api_calls', 0))}</td><td>{int(metrics.get('tool_calls', 0))}<br><small>{_esc(metrics.get('tools',''))}</small></td></tr>"
         )
 
-    failed_list = "".join(
-        f"<li><code>{_esc(t.get('task_id', ''))}</code> — {_esc(t.get('reason', ''))}</li>"
-        for t in tasks
-        if _display_status(t) != "PASS"
-    ) or "<li>No failed tasks.</li>"
+    chips = "".join(
+        f"<span class='chip'>{_esc(reason)} <b>{count}</b></span>"
+        for reason, count in sorted(failure_reasons.items(), key=lambda x: (-x[1], x[0]))[:20]
+    ) or "<span class='chip'>No failures <b>0</b></span>"
 
-    run_dir = summary_path.parent
-    tele1 = _telemetry_summary(run_dir / "telemetry_node1.csv")
-    tele2 = _telemetry_summary(run_dir / "telemetry_node2.csv")
     generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
-    rate_cls = _status_class(rate)
-    html_doc = f"""<!doctype html>
-<html lang='en'>
-<head>
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>HermesBench Report — {_esc(model)}</title>
-<style>
-:root {{--bg:#080a10;--panel:#101522;--panel2:#151c2e;--line:#29324a;--text:#e8edf8;--muted:#9aa7bd;--green:#00e58f;--red:#ff4d6d;--yellow:#ffd166;--blue:#6ea8ff;}}
-*{{box-sizing:border-box}} body{{margin:0;background:radial-gradient(circle at 20% 0%,#18213a 0,#080a10 38%,#05060a 100%);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}}
-.wrap{{max-width:1220px;margin:0 auto;padding:36px 20px 64px}} .hero{{border:1px solid var(--line);border-radius:28px;padding:30px;background:linear-gradient(135deg,rgba(21,28,46,.96),rgba(12,16,28,.92));box-shadow:0 24px 80px rgba(0,0,0,.45);position:relative;overflow:hidden}} .hero:after{{content:'';position:absolute;inset:auto -120px -120px auto;width:360px;height:360px;background:radial-gradient(circle,rgba(0,229,143,.18),transparent 65%)}}
-h1{{margin:0;font-size:clamp(30px,5vw,64px);letter-spacing:-.05em;line-height:.95}} .sub{{color:var(--muted);margin-top:12px;font-size:16px}} .grid{{display:grid;gap:16px;grid-template-columns:repeat(4,1fr);margin-top:22px}} .card{{border:1px solid var(--line);background:rgba(16,21,34,.84);border-radius:20px;padding:18px}} .metric .num{{display:block;font-size:34px;font-weight:800;letter-spacing:-.04em}} .metric .label{{color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-size:11px}}
-.good{{color:var(--green)}} .bad{{color:var(--red)}} .mid{{color:var(--yellow)}} section{{margin-top:28px}} h2{{margin:0 0 12px;font-size:24px;letter-spacing:-.02em}} table{{width:100%;border-collapse:collapse;overflow:hidden;border-radius:16px}} th,td{{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left}} th{{color:#c8d3e6;background:#121a2b;font-size:12px;text-transform:uppercase;letter-spacing:.08em}} tr:hover td{{background:rgba(255,255,255,.025)}} code{{color:#dbeafe;background:rgba(110,168,255,.10);padding:.12em .35em;border-radius:6px}} .pill{{display:inline-flex;min-width:58px;justify-content:center;border-radius:999px;border:1px solid currentColor;padding:2px 8px;font-weight:800}} .bar{{height:9px;background:#263149;border-radius:999px;overflow:hidden}} .bar i{{display:block;height:100%;background:linear-gradient(90deg,var(--red),var(--yellow),var(--green));border-radius:999px}}
-.telegrid{{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}} .tele{{display:grid;gap:6px;color:var(--muted)}} .tele b{{color:var(--text);font-size:16px}} .task{{border:1px solid var(--line);background:rgba(16,21,34,.72);border-radius:16px;margin:10px 0;overflow:hidden}} .task summary{{cursor:pointer;display:grid;grid-template-columns:96px minmax(260px,1fr) 1.2fr 80px;gap:12px;align-items:center;padding:12px 14px}} .task.pass{{border-left:4px solid var(--green)}} .task.fail{{border-left:4px solid var(--red)}} .task.infra{{border-left:4px solid var(--yellow)}} .status{{border-radius:999px;padding:3px 9px;font-weight:900;font-size:11px;text-align:center}} .status.pass{{color:#001b10;background:var(--green)}} .status.fail{{color:#2a0008;background:var(--red)}} .status.infra{{color:#2a1d00;background:var(--yellow)}} .task summary em{{color:var(--muted);font-style:normal;text-align:right}} .taskbody{{padding:0 14px 16px 106px;color:#d8e0ef}} .kv{{display:grid;grid-template-columns:150px 1fr;gap:12px;padding:4px 0}} .kv b{{color:var(--muted)}} pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#080c15;border:1px solid #222b40;border-radius:12px;padding:12px;color:#cbd5e1}} .failbox{{max-height:360px;overflow:auto}} .footer{{color:var(--muted);margin-top:28px;border-top:1px solid var(--line);padding-top:18px}}
-@media(max-width:900px){{.grid{{grid-template-columns:repeat(2,1fr)}}.telegrid{{grid-template-columns:1fr}}.task summary{{grid-template-columns:70px 1fr}}.task summary span:nth-child(3),.task summary em{{display:none}}.taskbody{{padding:0 12px 14px}}}}
-</style>
-</head><body><div class='wrap'>
-<header class='hero'><h1>HermesBench<br>{_esc(model)}</h1><div class='sub'>Canonical full HTML report · generated {_esc(generated_at)}</div><div class='grid'>
-<div class='card metric'><span class='num {rate_cls}'>{rate:.1f}%</span><span class='label'>pass rate</span></div><div class='card metric'><span class='num'>{passed}/{total}</span><span class='label'>passed tasks</span></div><div class='card metric'><span class='num'>{failed}</span><span class='label'>model/verifier fails</span></div><div class='card metric'><span class='num mid'>{infra}</span><span class='label'>infra errors</span></div>
-</div></header>
-<section class='card'><h2>Run metadata</h2><div class='kv'><b>Run ID</b><span><code>{_esc(run_id)}</code></span></div><div class='kv'><b>Model</b><span><code>{_esc(model)}</code></span></div><div class='kv'><b>Endpoint</b><span><code>{_esc(summary.get('base_url'))}</code></span></div><div class='kv'><b>Hermes SHA</b><span><code>{_esc(summary.get('hermes_sha'))}</code></span></div><div class='kv'><b>Toolsets</b><span><code>{_esc(summary.get('toolsets'))}</code></span></div></section>
-<section class='card'><h2>Category breakdown</h2><table><thead><tr><th>Category</th><th>Pass</th><th>Rate</th><th>Infra</th><th>Elapsed</th><th>Bar</th></tr></thead><tbody>{''.join(cat_rows)}</tbody></table></section>
-<section class='card'><h2>GPU telemetry</h2><div class='telegrid'>{_telemetry_card('Node1 / head', tele1)}{_telemetry_card('Node2 / worker', tele2)}</div></section>
-<section class='card'><h2>Failed task reasons</h2><ol class='failbox'>{failed_list}</ol></section>
-<section><h2>All task prompts, results, and artifacts</h2>{''.join(task_cards)}</section>
-<div class='footer'>Raw artifacts: <code>{_esc(summary_path)}</code> · traces: <code>{_esc(root / 'traces' / str(run_id))}</code></div>
-</div></body></html>
-"""
-    dest = out_path or summary_path.parent / "report.html"
-    dest.write_text(html_doc, encoding="utf-8")
-    return dest
+    report_md = summary_path.parent / "REPORT.md"
+    quality_gate = summary_path.parent / "QUALITY_GATE.json"
+    video = root / "video" / f"{run_id}_benchmark.mp4"
+    pass_rate_text = f"{rate:.2f}% pass rate"
 
+    doc = f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HermesBench Report · {_esc(run_id)}</title><style>
+:root{{color-scheme:dark;--bg:#060913;--panel:#0f172a;--panel2:#111827;--text:#e5edf7;--muted:#91a4bd;--line:#26364f;--green:#22c55e;--red:#fb7185;--amber:#f59e0b;--cyan:#22d3ee;--violet:#a78bfa}}*{{box-sizing:border-box}}body{{margin:0;background:radial-gradient(circle at 15% -10%,#1e3a8a 0,#0b1020 35%,#060913 100%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif}}main{{max-width:1440px;margin:0 auto;padding:34px 22px 80px}}.hero{{position:relative;overflow:hidden;border:1px solid #2b3a55;background:linear-gradient(135deg,rgba(15,23,42,.97),rgba(2,6,23,.95));border-radius:32px;padding:34px;box-shadow:0 30px 100px #0009}}.hero:after{{content:"";position:absolute;inset:auto -10% -40% 40%;height:280px;background:radial-gradient(circle,#22d3ee33,transparent 60%)}}.kicker{{color:var(--cyan);font-weight:900;letter-spacing:.16em;text-transform:uppercase;font-size:12px}}.title{{font-size:clamp(30px,5vw,62px);line-height:1;margin:12px 0}}.score{{font-size:clamp(64px,12vw,150px);line-height:.9;font-weight:1000;margin:20px 0;background:linear-gradient(90deg,#fff,#67e8f9,#a78bfa);-webkit-background-clip:text;color:transparent}}.score small{{font-size:.28em;color:var(--muted);-webkit-text-fill-color:var(--muted)}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}}.card{{border:1px solid var(--line);background:linear-gradient(180deg,rgba(17,24,39,.88),rgba(15,23,42,.72));border-radius:20px;padding:16px}}.metric .label{{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}}.metric .value{{font-size:26px;font-weight:900;margin-top:6px}}.split{{display:flex;justify-content:space-between;gap:12px}}.cat{{min-width:0;overflow:hidden}}.cat .split{{align-items:flex-start;gap:10px}}.cat .split b{{min-width:0;overflow-wrap:anywhere;word-break:break-word;line-height:1.15;padding-right:4px}}.cat .split span{{flex:0 0 auto}}.bar{{height:10px;background:#1f2937;border-radius:99px;overflow:hidden;margin:12px 0}}.bar i{{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--cyan));border-radius:99px}}.section{{margin-top:26px}}h2{{font-size:26px;margin:0 0 12px}}.chips{{display:flex;flex-wrap:wrap;gap:8px}}.pill,.chip{{display:inline-flex;gap:8px;align-items:center;border:1px solid #334155;background:#1e293b;color:var(--text);border-radius:999px;padding:5px 11px;font-weight:800}}.pill.pass,.pill.trusted,.trusted{{color:#22c55e}}.pill.fail,.fail{{color:var(--red)}}.pill.infra,.infra{{color:var(--amber)}}.chip b{{color:#fff}}code{{color:#bae6fd;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}.scroll{{overflow:auto;border-radius:18px;border:1px solid #1f2a44}}table{{width:100%;border-collapse:collapse;background:#0b1220}}th,td{{padding:12px;border-bottom:1px solid #1f2a44;text-align:left;vertical-align:top}}th{{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#dbeafe}}tr.pass td{{background:#052e1a11}}tr.fail td{{background:#4c051911}}tr.infra_error td{{background:#451a0318}}small{{color:var(--muted)}}footer{{color:var(--muted);margin-top:28px}}@media(max-width:800px){{main{{padding:18px 12px}}.hero{{padding:22px}}.score{{font-size:80px}}}}
+</style></head><body><main>
+<section class="hero"><div class="kicker">HermesBench · method-quality clean baseline</div><h1 class="title">{_esc(title)}</h1><div class="score">{passed}<small>/{total}</small></div><div class="chips"><span class="pill {quality_class}">{quality_text}</span><span class="pill">{pass_rate_text}</span><span class="pill">{_esc(run_id)}</span></div><div class="grid" style="margin-top:22px"><article class="card metric"><div class="label">Model</div><div class="value">{_esc(model)}</div></article><article class="card metric"><div class="label">Endpoint</div><div class="value" style="font-size:16px"><code>{_esc(base_url)}</code></div></article><article class="card metric"><div class="label">Total elapsed</div><div class="value">{total_elapsed/60:.1f}m</div></article><article class="card metric"><div class="label">API calls</div><div class="value">{api_calls}</div></article><article class="card metric"><div class="label">Tool calls</div><div class="value">{tool_calls}</div></article><article class="card metric"><div class="label">Median task</div><div class="value">{median_elapsed:.1f}s</div></article></div></section>
+<section class="section"><h2>Trust diagnostics</h2><article class="card"><ul><li>{'No benchmark-method issues detected.' if infra == 0 else f'{infra} infrastructure/API failures detected; pass rate is not a clean model score.'}</li><li>Fixture integrity after run: <b class="trusted">check report log</b></li><li>Endpoint routing: <b class="{'trusted' if endpoint_ok else 'fail'}">{endpoint_logs}/{total} logs used {_esc(base_url)}</b></li><li>Trace artifacts: <b class="{'trusted' if trace_ok else 'fail'}">{trace_present}/{total} present and non-empty</b></li><li>Hermes SHA: <code>{_esc(summary.get('hermes_sha',''))}</code></li></ul></article></section>
+<section class="section"><h2>Category heatmap</h2><div class="grid">{''.join(cat_cards)}</div></section>
+<section class="section"><h2>Failure analysis</h2><div class="chips">{chips}</div><div class="scroll" style="margin-top:12px"><table><thead><tr><th>Task</th><th>Name</th><th>Reason</th><th>Elapsed</th><th>Tools</th></tr></thead><tbody>{''.join(failed_rows)}</tbody></table></div></section>
+<section class="section"><h2>All {total} questions, metrics, and telemetry</h2><div class="scroll"><table><thead><tr><th>Task</th><th>Status</th><th>Question / prompt</th><th>Verifier reason</th><th>Elapsed</th><th>API</th><th>Tool calls</th></tr></thead><tbody>{''.join(all_rows)}</tbody></table></div></section>
+<section class="section"><h2>Artifacts</h2><article class="card"><p>Summary: <code>{_esc(summary_path)}</code></p><p>Markdown report: <code>{_esc(report_md)}</code></p><p>Quality gate: <code>{_esc(quality_gate)}</code></p><p>Video: <code>{_esc(video)}</code></p><p>Trace directory: <code>{_esc(root / 'traces' / run_id)}</code></p></article></section>
+<footer>Generated {generated_at} · self-contained static HTML · secrets/log bodies not embedded.</footer>
+</main></body></html>'''
+    dest = out_path or summary_path.parent / "report.html"
+    dest.write_text(doc, encoding="utf-8")
+    return dest
 
 def generate_html_report(results: list[dict], out_path: str, model_name: str = "") -> None:
     """Compatibility wrapper for callers that only have task result dicts."""
