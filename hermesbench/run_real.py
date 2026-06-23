@@ -17,6 +17,7 @@ from typing import Any
 from hermesbench.backend import worktree as worktree_setup
 from hermesbench.cli import _discover_tasks, _load_task
 from hermesbench.hermes_invocation import (
+    allowed_tools_to_toolsets,
     find_hermes_agent,
     get_hermes_sha,
     get_hermes_version,
@@ -277,6 +278,20 @@ def _build_task_query(task: TaskSpec, worktree: Path) -> str:
     )
 
 
+def _effective_toolsets_for_task(task: TaskSpec, requested_toolsets: str) -> str:
+    """Resolve the per-task Hermes toolsets.
+
+    ``--toolsets all`` preserves the historical full-surface benchmark. ``auto``
+    uses each task's ``allowed_tools`` to expose only the relevant toolsets,
+    reducing prompt/schema size for local endpoints with tight context and
+    slower long-context prefill.
+    """
+
+    if requested_toolsets.strip().lower() == "auto":
+        return allowed_tools_to_toolsets(task.allowed_tools)
+    return requested_toolsets
+
+
 def _run_hermes(
     *,
     hermes_path: Path,
@@ -498,6 +513,8 @@ def run_real_benchmark(
         trace_path = task_dir / "trace.jsonl"
         verifier_path = task_dir / "verifier_result.json"
 
+        effective_toolsets = _effective_toolsets_for_task(task, toolsets)
+
         completed = _run_hermes(
             hermes_path=hermes_path,
             worktree=worktree,
@@ -505,7 +522,7 @@ def run_real_benchmark(
             task=task,
             model=model,
             base_url=base_url,
-            toolsets=toolsets,
+            toolsets=effective_toolsets,
             max_turns=max_turns or task.max_turns,
             log_path=raw_log_path,
             timeout_seconds=task.timeout_seconds + timeout_overhead,
@@ -550,6 +567,7 @@ def run_real_benchmark(
             "reason": verifier_result.reason,
             "elapsed_seconds": elapsed,
             "exit_code": completed.returncode,
+            "effective_toolsets": effective_toolsets,
             "worktree": str(worktree),
             "raw_log": str(raw_log_path),
             "trajectory": str(selected_trajectory_path or trajectory_path),

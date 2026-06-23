@@ -8,6 +8,7 @@ from hermesbench.cli import _load_task
 from hermesbench.run_real import (
     _build_task_query,
     _completed_tasks_by_id,
+    _effective_toolsets_for_task,
     _merge_task_rows,
     tasks_to_run_with_resume,
 )
@@ -71,3 +72,10 @@ def test_build_task_query_includes_worktree(tmp_path: Path) -> None:
     assert f"Benchmark worktree: {tmp_path}" in query
     assert "Prefer relative paths" in query
     assert task.prompt in query
+
+
+def test_effective_toolsets_auto_uses_task_allowed_tools() -> None:
+    task = _load_task(REPO / "tasks/t04_search_grep/t02_glob")
+
+    assert _effective_toolsets_for_task(task, "auto") == "file,terminal"
+    assert _effective_toolsets_for_task(task, "all") == "all"
