@@ -327,34 +327,28 @@ def _run_hermes(
     ]
     if not use_hermes_config and base_url:
         cmd.extend(["--base_url", base_url, "--api_key", api_key])
-    log_file = log_path.open("w", encoding="utf-8")
-    proc = subprocess.Popen(
-        cmd,
-        cwd=worktree,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    assert proc.stdout is not None
-    try:
-        for line in proc.stdout:
-            log_file.write(line)
-            log_file.flush()
-        return subprocess.CompletedProcess(cmd, proc.wait(timeout=timeout_seconds), "", "")
-    except subprocess.TimeoutExpired:
-        proc.kill()
+    with log_path.open("w", encoding="utf-8") as log_file:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=worktree,
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
         try:
-            rest = proc.stdout.read(65536)
-        except Exception:
-            rest = ""
-        if rest:
-            log_file.write(rest)
+            proc.communicate(timeout=timeout_seconds)
+            return subprocess.CompletedProcess(cmd, proc.returncode, "", "")
+        except subprocess.TimeoutExpired as exc:
+            proc.kill()
+            proc.communicate()
+            log_file.write(f"\n[hermesbench] run_agent timeout after {timeout_seconds}s\n")
+            if exc.stdout:
+                log_file.write(str(exc.stdout))
+            if exc.stderr:
+                log_file.write(str(exc.stderr))
             log_file.flush()
-        return subprocess.CompletedProcess(cmd, 124, "", rest)
-    finally:
-        log_file.close()
+            return subprocess.CompletedProcess(cmd, 124, exc.stdout or "", exc.stderr or "")
 
 
 def _write_json(path: Path, obj: Any) -> None:

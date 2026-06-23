@@ -22,6 +22,13 @@ class _FakePopen:
     def wait(self, timeout: int | None = None) -> int:
         return 0
 
+    def communicate(self, timeout: int | None = None) -> tuple[str, str]:
+        return ("", "")
+
+    @property
+    def returncode(self) -> int:
+        return 0
+
     def kill(self) -> None:  # pragma: no cover - only used on timeout path
         return None
 
