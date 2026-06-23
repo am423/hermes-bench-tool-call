@@ -10,6 +10,7 @@ from typing import Any
 
 from hermesbench.event_timeline import write_event_timeline
 from hermesbench.hf_video import generate_hf_index
+from hermesbench.report import generate_run_html_report
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -17,12 +18,16 @@ REPO = Path(__file__).resolve().parent.parent
 def write_report_md(summary_path: Path, out_path: Path | None = None) -> Path:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     tasks = summary.get("tasks") or []
-    cats: dict[str, dict[str, int]] = defaultdict(lambda: {"pass": 0, "fail": 0})
+    cats: dict[str, dict[str, int]] = defaultdict(lambda: {"pass": 0, "fail": 0, "infra": 0})
     fails: list[dict[str, Any]] = []
     for t in tasks:
         key = t["task_id"].rsplit("/", 1)[0]
-        if t.get("status") == "PASS":
+        status = t.get("status")
+        if status == "PASS":
             cats[key]["pass"] += 1
+        elif status == "INFRA_ERROR":
+            cats[key]["infra"] += 1
+            fails.append(t)
         else:
             cats[key]["fail"] += 1
             fails.append(t)
@@ -41,12 +46,12 @@ def write_report_md(summary_path: Path, out_path: Path | None = None) -> Path:
         "",
         "## By category",
         "",
-        "| Category | Pass | Fail |",
-        "|----------|------|------|",
+        "| Category | Pass | Fail | Infra |",
+        "|----------|------|------|-------|",
     ]
     for k in sorted(cats):
         c = cats[k]
-        lines.append(f"| `{k}` | {c['pass']} | {c['fail']} |")
+        lines.append(f"| `{k}` | {c['pass']} | {c['fail']} | {c['infra']} |")
     lines += ["", "## Failed tasks", ""]
     for t in fails:
         lines.append(f"- `{t['task_id']}` — {t.get('reason', '')}")
@@ -74,6 +79,7 @@ def generate_run_artifacts(
         raise FileNotFoundError(f"missing {summary_path}")
 
     report_path = write_report_md(summary_path)
+    html_path = generate_run_html_report(summary_path, repo_root=repo_root)
     timeline_path = repo_root / "video" / f"{run_id}_event_timeline.json"
     timeline = write_event_timeline(summary_path, timeline_path, video_duration=video_duration)
     hf_dir = repo_root / "video" / "hf-grok-composer"
@@ -81,6 +87,7 @@ def generate_run_artifacts(
 
     out: dict[str, Path] = {
         "report": report_path,
+        "html_report": html_path,
         "timeline": timeline_path,
         "hf_index": index_path,
     }

@@ -23,7 +23,7 @@ from hermesbench.hermes_invocation import (
     hermes_python,
 )
 from hermesbench.runner import _run_verifier
-from hermesbench.types import TaskSpec
+from hermesbench.types import TaskSpec, VerifierResult, VerifierStatus
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -207,6 +207,44 @@ def _select_trajectory_path(worktree: Path) -> Path | None:
         path = worktree / name
         if path.is_file() and path.stat().st_size > 0:
             return path
+    return None
+
+
+INFRA_ERROR_PATTERNS = (
+    "APIConnectionError",
+    "API call failed after",
+    "Connection error.",
+    "EngineDeadError",
+    "HTTP Error 5",
+    "ReadTimeout",
+    "ConnectTimeout",
+    "RemoteProtocolError",
+)
+
+
+def _detect_infra_error(
+    *,
+    completed: subprocess.CompletedProcess[str],
+    log_path: Path,
+    selected_trajectory_path: Path | None,
+) -> str | None:
+    """Return an infra-error reason for transport/engine failures.
+
+    If run_agent never produced a trajectory, running the task verifier turns an
+    endpoint outage into a misleading model failure such as "model did not use
+    terminal". Classify those as INFRA_ERROR so the run is visibly invalid and
+    resumable instead of poisoning model scores.
+    """
+    if completed.returncode == 124:
+        return "agent subprocess timed out before producing a trajectory"
+    if selected_trajectory_path is not None:
+        return None
+    if completed.returncode == 0:
+        return None
+    text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.exists() else ""
+    for pattern in INFRA_ERROR_PATTERNS:
+        if pattern in text:
+            return f"infrastructure/API failure: {pattern}"
     return None
 
 
@@ -482,7 +520,20 @@ def run_real_benchmark(
         else:
             trace_path.write_text("", encoding="utf-8")
 
-        verifier_result = _run_verifier(task, worktree, trace_path)
+        infra_reason = _detect_infra_error(
+            completed=completed,
+            log_path=raw_log_path,
+            selected_trajectory_path=selected_trajectory_path,
+        )
+        if infra_reason:
+            verifier_result = VerifierResult(
+                status=VerifierStatus.INFRA_ERROR,
+                score=0.0,
+                reason=infra_reason,
+                details={"exit_code": completed.returncode},
+            )
+        else:
+            verifier_result = _run_verifier(task, worktree, trace_path)
         verifier_payload = {
             "task_id": task.id,
             "difficulty": task.difficulty,
@@ -515,12 +566,18 @@ def run_real_benchmark(
     summary["tasks"] = _merge_task_rows(selected_ids, completed_by_id, fresh_rows)
 
     passed = sum(1 for item in summary["tasks"] if item["status"] == "PASS")
+    infra_errors = sum(1 for item in summary["tasks"] if item["status"] == "INFRA_ERROR")
     summary["passed"] = passed
-    summary["failed"] = len(summary["tasks"]) - passed
+    summary["infra_errors"] = infra_errors
+    summary["failed"] = sum(1 for item in summary["tasks"] if item["status"] == "FAIL")
     summary["pass_rate"] = passed / len(summary["tasks"]) if summary["tasks"] else 0.0
+    summary["valid_task_count"] = len(summary["tasks"]) - infra_errors
+    summary["valid_pass_rate"] = (
+        passed / summary["valid_task_count"] if summary["valid_task_count"] else 0.0
+    )
     _write_json(results_root / "summary.json", summary)
 
-    return 0 if summary["failed"] == 0 else 1
+    return 0 if summary["failed"] == 0 and infra_errors == 0 else 1
 
 
 def main() -> int:

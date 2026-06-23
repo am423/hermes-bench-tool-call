@@ -21,6 +21,7 @@ class VerifierStatus(StrEnum):
     SKIPPED = "SKIPPED"
     BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
     VERIFIER_ERROR = "VERIFIER_ERROR"
+    INFRA_ERROR = "INFRA_ERROR"
 
 
 @dataclass
